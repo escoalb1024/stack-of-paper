@@ -1,65 +1,143 @@
-import Image from "next/image";
+// Morning Pages — root scene.
+//
+// Composes Desk (RES-6) + PageStack (RES-7) + PageSurface (RES-9) inside the
+// CameraContainer driven by the mode FSM (RES-8). Text state lives in its
+// own reducer (RES-9) so the mode FSM stays focused on transitions.
+
+"use client";
+
+import { useEffect, useLayoutEffect, useReducer, useRef, useState } from "react";
+import { CameraContainer } from "@/components/CameraContainer";
+import { Desk } from "@/components/Desk";
+import { HiddenTextarea } from "@/components/HiddenTextarea";
+import { PageStack } from "@/components/PageStack";
+import {
+  PageSurface,
+  TEXT_FONT_FAMILY,
+  TEXT_FONT_SIZE,
+  TEXT_LINE_HEIGHT,
+} from "@/components/PageSurface";
+import { PenHand } from "@/components/PenHand";
+import { measureLineWidth, pickWrapPoint } from "@/lib/measure";
+import {
+  PAGE_ACTIVE_LEFT,
+  PAGE_ACTIVE_TOP,
+  WRITING_MARGIN_X,
+  WRITING_MARGIN_Y,
+  WRITING_WIDTH,
+} from "@/lib/scene";
+import { initialState, reducer } from "@/lib/state";
+import { activePage, initialTextState, textReducer } from "@/lib/text";
+
+// Small horizontal nudge so the pen nib sits just to the right of the last
+// character, as if hovering for the next one.
+const PEN_LEAD_X = Math.round(TEXT_FONT_SIZE * 0.3);
+
+// Default cursor position — writing origin in desk-space, at the text baseline.
+const DEFAULT_CURSOR = {
+  x: PAGE_ACTIVE_LEFT + WRITING_MARGIN_X + PEN_LEAD_X,
+  y: PAGE_ACTIVE_TOP + WRITING_MARGIN_Y + TEXT_FONT_SIZE,
+};
 
 export default function Home() {
+  const [mode, dispatch] = useReducer(reducer, initialState);
+  const [textState, textDispatch] = useReducer(textReducer, initialTextState);
+
+  // RES-12: keystroke counter drives pen jitter animation.
+  const [keystrokeCount, setKeystrokeCount] = useState(0);
+
+  // RES-11: cursor marker ref + measured position in desk-space.
+  const cursorRef = useRef<HTMLSpanElement>(null);
+  const [cursorPos, setCursorPos] = useState(DEFAULT_CURSOR);
+
+  // RES-15: after every text change, measure the active line and soft-wrap
+  // if it overflows the writable area. Runs before paint so the user never
+  // sees an overflowed state. Dispatching WRAP_LINE triggers a re-render and
+  // a second pass of this effect, which will be a no-op once the new
+  // trailing line fits.
+  useLayoutEffect(() => {
+    const page = activePage(textState);
+    const line = page.lines[page.lines.length - 1];
+    if (line.chars.length < 2) return;
+
+    const width = measureLineWidth(line.chars, {
+      fontFamily: TEXT_FONT_FAMILY,
+      fontSize: TEXT_FONT_SIZE,
+      lineHeight: TEXT_LINE_HEIGHT,
+    });
+    if (width <= WRITING_WIDTH) return;
+
+    const breakAt = pickWrapPoint(line.chars);
+    if (breakAt > 0) textDispatch({ type: "WRAP_LINE", breakAt });
+  }, [textState]);
+
+  useLayoutEffect(() => {
+    const el = cursorRef.current;
+    if (!el) return;
+    // offsetLeft is relative to the nearest positioned ancestor (PageSurface
+    // container, which is position:absolute). offsetTop of the parent line div
+    // gives the y within the writing area.
+    const lineDiv = el.parentElement;
+    if (!lineDiv) return;
+    setCursorPos({
+      x: PAGE_ACTIVE_LEFT + WRITING_MARGIN_X + el.offsetLeft + PEN_LEAD_X,
+      y: PAGE_ACTIVE_TOP + WRITING_MARGIN_Y + lineDiv.offsetTop + TEXT_FONT_SIZE,
+    });
+  }, [textState]);
+
+  // Esc during WRITING → zoom out.
+  useEffect(() => {
+    if (mode !== "WRITING") return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") dispatch({ type: "ESC_PRESSED" });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [mode]);
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+    <main className="relative h-screen w-screen overflow-clip bg-[#2a2621]">
+      <CameraContainer
+        state={mode}
+        penX={cursorPos.x}
+        penY={cursorPos.y}
+        onZoomInComplete={() => dispatch({ type: "ZOOM_IN_COMPLETE" })}
+        onZoomOutComplete={() => dispatch({ type: "ZOOM_OUT_COMPLETE" })}
+      >
+        <Desk>
+          <PageStack onClick={() => dispatch({ type: "CLICK_PAGE_STACK" })} />
+          <PageSurface page={activePage(textState)} cursorRef={cursorRef} />
+          <PenHand
+            cursorX={cursorPos.x}
+            cursorY={cursorPos.y}
+            visible={mode === "WRITING"}
+            keystrokeCount={keystrokeCount}
+          />
+        </Desk>
+      </CameraContainer>
+
+      <HiddenTextarea
+        active={mode === "WRITING"}
+        onChar={(ch) => {
+          textDispatch({ type: "APPEND_CHAR", char: ch });
+          setKeystrokeCount((c) => c + 1);
+        }}
+        onNewline={() => {
+          textDispatch({ type: "NEWLINE" });
+          setKeystrokeCount((c) => c + 1);
+        }}
+        onBackspace={() => {
+          textDispatch({ type: "BACKSPACE" });
+          setKeystrokeCount((c) => c + 1);
+        }}
+      />
+
+      {/* Dev affordance — state + char count. Remove once the journal UI
+          lands in later tickets. */}
+      <div className="pointer-events-none fixed bottom-3 right-3 rounded bg-black/40 px-2 py-1 font-mono text-xs text-white/80">
+        {mode}
+        {mode === "WRITING" ? "  ·  Esc to zoom out" : null}
+      </div>
+    </main>
   );
 }
