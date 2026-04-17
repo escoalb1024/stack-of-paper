@@ -9,7 +9,13 @@
 // and tiny x/y shake that eases back over ~150ms, simulating the physical
 // motion of writing.
 //
-// Line break and page turn pen animations are Phase 2.
+// RES-16 — Line break: when the active page grows a new line, the pen
+// performs a short "lift" (upward translate + subtle rotation) while the
+// outer x/y spring carries it left+down to the new line start. The lift
+// lives on a nested motion.div so it composes additively with keystroke
+// jitter and the cursor-tracking spring.
+//
+// Page turn pen animation is a later ticket.
 
 "use client";
 
@@ -45,9 +51,17 @@ type PenHandProps = {
   visible: boolean;
   /** Incremented on each keystroke to trigger jitter animation. */
   keystrokeCount?: number;
+  /** Incremented on each line break (NEWLINE or WRAP_LINE) to trigger lift. */
+  lineBreakCount?: number;
 };
 
-export function PenHand({ cursorX, cursorY, visible, keystrokeCount = 0 }: PenHandProps) {
+export function PenHand({
+  cursorX,
+  cursorY,
+  visible,
+  keystrokeCount = 0,
+  lineBreakCount = 0,
+}: PenHandProps) {
   // Position the SVG so the nib lands on the cursor coordinates.
   const x = cursorX - NIB_OFFSET_X;
   const y = cursorY - NIB_OFFSET_Y;
@@ -55,6 +69,11 @@ export function PenHand({ cursorX, cursorY, visible, keystrokeCount = 0 }: PenHa
   // RES-12: imperative jitter animation on each keystroke.
   const [jitterScope, jitterAnimate] = useAnimate();
   const prevKeystroke = useRef(keystrokeCount);
+
+  // RES-16: imperative lift animation on each line break. Lives on its
+  // own scope so it stacks cleanly with the keystroke jitter layer.
+  const [liftScope, liftAnimate] = useAnimate();
+  const prevLineBreak = useRef(lineBreakCount);
 
   useEffect(() => {
     if (keystrokeCount === prevKeystroke.current) return;
@@ -72,6 +91,21 @@ export function PenHand({ cursorX, cursorY, visible, keystrokeCount = 0 }: PenHa
       { duration: 0.25, ease: [0.22, 1, 0.36, 1] },
     );
   }, [keystrokeCount, jitterAnimate, jitterScope]);
+
+  useEffect(() => {
+    if (lineBreakCount === prevLineBreak.current) return;
+    prevLineBreak.current = lineBreakCount;
+
+    // Lift fast, hang briefly while the outer x/y spring carries the hand
+    // left+down, then drop. Asymmetric keyframe times (fast rise, held
+    // peak, softer drop) make the arc read as a real lift rather than a
+    // symmetric bounce — noticeably bigger than the per-keystroke jitter.
+    liftAnimate(
+      liftScope.current,
+      { y: [0, -28, -24, 0], rotate: [0, -10, -8, 0] },
+      { duration: 0.28, times: [0, 0.25, 0.6, 1], ease: "easeOut" },
+    );
+  }, [lineBreakCount, liftAnimate, liftScope]);
 
   return (
     <motion.div
@@ -104,16 +138,19 @@ export function PenHand({ cursorX, cursorY, visible, keystrokeCount = 0 }: PenHa
         },
       }}
     >
-      {/* RES-12: nested div for additive keystroke jitter */}
-      <motion.div ref={jitterScope} style={{ transformOrigin: `${NIB_OFFSET_X}px ${NIB_OFFSET_Y}px` }}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src="/hand.svg"
-          alt=""
-          width={HAND_WIDTH}
-          height={HAND_HEIGHT}
-          draggable={false}
-        />
+      {/* RES-16: lift layer — runs during line-break travel. */}
+      <motion.div ref={liftScope} style={{ transformOrigin: `${NIB_OFFSET_X}px ${NIB_OFFSET_Y}px` }}>
+        {/* RES-12: nested div for additive keystroke jitter */}
+        <motion.div ref={jitterScope} style={{ transformOrigin: `${NIB_OFFSET_X}px ${NIB_OFFSET_Y}px` }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/hand.svg"
+            alt=""
+            width={HAND_WIDTH}
+            height={HAND_HEIGHT}
+            draggable={false}
+          />
+        </motion.div>
       </motion.div>
     </motion.div>
   );

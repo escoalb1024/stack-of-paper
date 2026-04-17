@@ -46,6 +46,11 @@ export default function Home() {
   // RES-12: keystroke counter drives pen jitter animation.
   const [keystrokeCount, setKeystrokeCount] = useState(0);
 
+  // RES-16: line-break counter drives the pen lift animation. Bumped
+  // whenever the active page grows a new line (NEWLINE or WRAP_LINE).
+  const [lineBreakCount, setLineBreakCount] = useState(0);
+  const prevLineCountRef = useRef(1);
+
   // RES-11: cursor marker ref + measured position in desk-space.
   const cursorRef = useRef<HTMLSpanElement>(null);
   const [cursorPos, setCursorPos] = useState(DEFAULT_CURSOR);
@@ -69,6 +74,15 @@ export default function Home() {
 
     const breakAt = pickWrapPoint(line.chars);
     if (breakAt > 0) textDispatch({ type: "WRAP_LINE", breakAt });
+  }, [textState]);
+
+  // RES-16: detect line-count increases on the active page and bump the
+  // counter so PenHand can trigger its lift animation. Covers both Enter
+  // (NEWLINE) and soft-wrap (WRAP_LINE).
+  useLayoutEffect(() => {
+    const n = activePage(textState).lines.length;
+    if (n > prevLineCountRef.current) setLineBreakCount((c) => c + 1);
+    prevLineCountRef.current = n;
   }, [textState]);
 
   useLayoutEffect(() => {
@@ -112,6 +126,7 @@ export default function Home() {
             cursorY={cursorPos.y}
             visible={mode === "WRITING"}
             keystrokeCount={keystrokeCount}
+            lineBreakCount={lineBreakCount}
           />
         </Desk>
       </CameraContainer>
