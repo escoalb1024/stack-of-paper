@@ -12,6 +12,7 @@ import { Desk } from "@/components/Desk";
 import { HiddenTextarea } from "@/components/HiddenTextarea";
 import { PageStack } from "@/components/PageStack";
 import {
+  MAX_LINES_PER_PAGE,
   PageSurface,
   TEXT_FONT_FAMILY,
   TEXT_FONT_SIZE,
@@ -76,14 +77,46 @@ export default function Home() {
     if (breakAt > 0) textDispatch({ type: "WRAP_LINE", breakAt });
   }, [textState]);
 
-  // RES-16: detect line-count increases on the active page and bump the
-  // counter so PenHand can trigger its lift animation. Covers both Enter
-  // (NEWLINE) and soft-wrap (WRAP_LINE).
+  // RES-17: page-fill detection. When the active page's line count exceeds
+  // the page's line capacity, split off the overflow onto a fresh page and
+  // transition the FSM into PAGE_TURN. Runs after the RES-15 soft-wrap
+  // effect above, so on the render where a wrap pushes us past the
+  // threshold this fires and hands off to the FSM. Guarded on mode so we
+  // don't re-dispatch while PAGE_TURN is already in flight.
+  useLayoutEffect(() => {
+    if (mode !== "WRITING") return;
+    const page = activePage(textState);
+    if (page.lines.length > MAX_LINES_PER_PAGE) {
+      textDispatch({ type: "ADD_PAGE", splitAt: MAX_LINES_PER_PAGE });
+      dispatch({ type: "PAGE_FILLED" });
+    }
+  }, [textState, mode]);
+
+  // RES-17: detect line-count increases on the *active* page and bump the
+  // RES-16 line-break counter so PenHand can trigger its lift animation.
+  // Compared against a per-page baseline so a page turn (pageIndex change)
+  // resets the baseline instead of firing a spurious line-break animation.
+  const prevPageIndexRef = useRef(0);
   useLayoutEffect(() => {
     const n = activePage(textState).lines.length;
-    if (n > prevLineCountRef.current) setLineBreakCount((c) => c + 1);
+    const pageChanged = textState.pageIndex !== prevPageIndexRef.current;
+    if (!pageChanged && n > prevLineCountRef.current) {
+      setLineBreakCount((c) => c + 1);
+    }
     prevLineCountRef.current = n;
+    prevPageIndexRef.current = textState.pageIndex;
   }, [textState]);
+
+  // RES-17: PAGE_TURN completion. The PAGE_TURN animation lands in RES-18;
+  // for now we auto-complete on the next frame so writing resumes at the
+  // top-left of the new page without a visible stall.
+  useEffect(() => {
+    if (mode !== "PAGE_TURN") return;
+    const raf = requestAnimationFrame(() =>
+      dispatch({ type: "PAGE_TURN_COMPLETE" }),
+    );
+    return () => cancelAnimationFrame(raf);
+  }, [mode]);
 
   useLayoutEffect(() => {
     const el = cursorRef.current;
