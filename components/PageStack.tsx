@@ -1,5 +1,11 @@
 // RES-7 — Page stack static visual (3 pages with offsets/shadows).
-// Centered, bottom-aligned on the desk. PageActive (top) is clickable.
+// RES-18 — The stack grows as pages fill: every completed page adds a "done"
+// paper behind the active slot at a small accumulating offset, so the pile
+// reads as thicker over time.
+//
+// Centered, bottom-aligned on the desk. The top (active) paper is clickable
+// to trigger ZOOM_IN from DESK_IDLE — during PAGE_TURN we hide it so the
+// incoming paper in PageTurnAnimation can slide into an empty slot.
 
 "use client";
 
@@ -12,6 +18,16 @@ import {
 
 type PageStackProps = {
   onClick: () => void;
+  /**
+   * Number of finished pages to render behind the active slot. Each one adds
+   * a small accumulating offset so the pile visibly thickens over time.
+   */
+  doneCount?: number;
+  /**
+   * When false, the active paper is not drawn (used during PAGE_TURN so the
+   * incoming page can slide into an empty slot).
+   */
+  showActive?: boolean;
 };
 
 type PageProps = {
@@ -60,14 +76,43 @@ function Page({ offsetX, offsetY, rotate, zIndex, active, onClick }: PageProps) 
   );
 }
 
-export function PageStack({ onClick }: PageStackProps) {
-  // Back pages offset 1–2px each behind the active page, with tiny rotations
-  // for an organic pile feel.
+export function PageStack({
+  onClick,
+  doneCount = 0,
+  showActive = true,
+}: PageStackProps) {
+  // Done pages accumulate behind the two decorative back pages. Offsets stay
+  // small (sub-pixel rotation, ~1px per page) so the pile thickens organically
+  // rather than fanning out. Must match PageTurnAnimation's landing spot for
+  // doneIndex so the handoff is seamless.
+  const donePages = Array.from({ length: doneCount }, (_, i) => ({
+    key: `done-${i}`,
+    offsetX: -5 - i * 0.6,
+    offsetY: 4 + i * 0.9,
+    rotate: i % 2 === 0 ? -0.9 : 0.7,
+    // Behind the decorative back pages (zIndex 1–2) so they truly live at the
+    // bottom of the pile.
+    zIndex: -10 - i,
+  }));
+
   return (
     <>
+      {donePages.map((p) => (
+        <Page
+          key={p.key}
+          offsetX={p.offsetX}
+          offsetY={p.offsetY}
+          rotate={p.rotate}
+          zIndex={p.zIndex}
+        />
+      ))}
+      {/* Back pages offset 1–2px each behind the active page, with tiny
+          rotations for an organic pile feel. */}
       <Page offsetX={-2} offsetY={2} rotate={-0.6} zIndex={1} />
       <Page offsetX={1} offsetY={1} rotate={0.4} zIndex={2} />
-      <Page offsetX={0} offsetY={0} rotate={0} zIndex={3} active onClick={onClick} />
+      {showActive && (
+        <Page offsetX={0} offsetY={0} rotate={0} zIndex={3} active onClick={onClick} />
+      )}
     </>
   );
 }

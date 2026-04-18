@@ -20,8 +20,11 @@ import { Page } from "@/lib/text";
 const CHAR_SPAN: CSSProperties = {
   display: "inline-block",
   // Each char is positioned statically in flow, then nudged by its own
-  // transform (offset + rotation). RES-10 populates non-zero values.
-  willChange: "transform",
+  // transform (offset + rotation). RES-10 populates non-zero values. Note:
+  // we deliberately do NOT set `willChange: transform` here — the per-char
+  // transforms are static (set at character creation, never animated), and
+  // promoting 1000+ spans to their own compositor layers makes the RES-18
+  // page-turn animation stutter badly every other turn.
 };
 
 // Font metrics — exported for cursor position calculation (RES-11) and the

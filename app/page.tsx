@@ -11,6 +11,7 @@ import { CameraContainer } from "@/components/CameraContainer";
 import { Desk } from "@/components/Desk";
 import { HiddenTextarea } from "@/components/HiddenTextarea";
 import { PageStack } from "@/components/PageStack";
+import { PageTurnAnimation } from "@/components/PageTurnAnimation";
 import {
   MAX_LINES_PER_PAGE,
   PageSurface,
@@ -51,6 +52,7 @@ export default function Home() {
   // whenever the active page grows a new line (NEWLINE or WRAP_LINE).
   const [lineBreakCount, setLineBreakCount] = useState(0);
   const prevLineCountRef = useRef(1);
+
 
   // RES-11: cursor marker ref + measured position in desk-space.
   const cursorRef = useRef<HTMLSpanElement>(null);
@@ -96,27 +98,27 @@ export default function Home() {
   // RES-16 line-break counter so PenHand can trigger its lift animation.
   // Compared against a per-page baseline so a page turn (pageIndex change)
   // resets the baseline instead of firing a spurious line-break animation.
+  // RES-18: also skip the bump when the new line pushes past the page's
+  // capacity — that render is immediately followed by ADD_PAGE + PAGE_FILLED,
+  // and we want the page-turn lift (not the line-break lift) to play for it.
   const prevPageIndexRef = useRef(0);
   useLayoutEffect(() => {
     const n = activePage(textState).lines.length;
     const pageChanged = textState.pageIndex !== prevPageIndexRef.current;
-    if (!pageChanged && n > prevLineCountRef.current) {
+    if (
+      !pageChanged &&
+      n > prevLineCountRef.current &&
+      n <= MAX_LINES_PER_PAGE
+    ) {
       setLineBreakCount((c) => c + 1);
     }
     prevLineCountRef.current = n;
     prevPageIndexRef.current = textState.pageIndex;
   }, [textState]);
 
-  // RES-17: PAGE_TURN completion. The PAGE_TURN animation lands in RES-18;
-  // for now we auto-complete on the next frame so writing resumes at the
-  // top-left of the new page without a visible stall.
-  useEffect(() => {
-    if (mode !== "PAGE_TURN") return;
-    const raf = requestAnimationFrame(() =>
-      dispatch({ type: "PAGE_TURN_COMPLETE" }),
-    );
-    return () => cancelAnimationFrame(raf);
-  }, [mode]);
+  // RES-18: PAGE_TURN completion is driven by PageTurnAnimation's
+  // onAnimationComplete callback below. The pen's page-turn lift is
+  // triggered inside PenHand from the `pageTurning` prop transition.
 
   useLayoutEffect(() => {
     const el = cursorRef.current;
@@ -152,14 +154,41 @@ export default function Home() {
         onZoomOutComplete={() => dispatch({ type: "ZOOM_OUT_COMPLETE" })}
       >
         <Desk>
-          <PageStack onClick={() => dispatch({ type: "CLICK_PAGE_STACK" })} />
-          <PageSurface page={activePage(textState)} cursorRef={cursorRef} />
+          <PageStack
+            onClick={() => dispatch({ type: "CLICK_PAGE_STACK" })}
+            doneCount={
+              // During PAGE_TURN the outgoing page is still visibly animating
+              // into the done stack via PageTurnAnimation, so we render one
+              // fewer done page here to avoid a double paper. It slots in on
+              // handoff once PAGE_TURN_COMPLETE flips us back to WRITING.
+              mode === "PAGE_TURN"
+                ? Math.max(0, textState.pageIndex - 1)
+                : textState.pageIndex
+            }
+            showActive={mode !== "PAGE_TURN"}
+          />
+          {/* RES-18: hide the live PageSurface during PAGE_TURN so only the
+              PageTurnAnimation overlay is visible. Kept mounted (via opacity)
+              so cursorRef remains measurable and the pen lands on the new
+              top-left as soon as the turn completes. */}
+          <div style={{ opacity: mode === "PAGE_TURN" ? 0 : 1 }}>
+            <PageSurface page={activePage(textState)} cursorRef={cursorRef} />
+          </div>
+          {mode === "PAGE_TURN" && textState.pageIndex > 0 && (
+            <PageTurnAnimation
+              outgoingPage={textState.pages[textState.pageIndex - 1]}
+              incomingPage={activePage(textState)}
+              doneIndex={textState.pageIndex - 1}
+              onComplete={() => dispatch({ type: "PAGE_TURN_COMPLETE" })}
+            />
+          )}
           <PenHand
             cursorX={cursorPos.x}
             cursorY={cursorPos.y}
-            visible={mode === "WRITING"}
+            visible={mode === "WRITING" || mode === "PAGE_TURN"}
             keystrokeCount={keystrokeCount}
             lineBreakCount={lineBreakCount}
+            pageTurning={mode === "PAGE_TURN"}
           />
         </Desk>
       </CameraContainer>
