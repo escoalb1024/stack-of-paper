@@ -37,6 +37,7 @@ import {
   PAGE_WIDTH,
 } from "@/lib/scene";
 import { Page } from "@/lib/text";
+import { doneSlotOffset } from "./PageStack";
 import { PageSurface } from "./PageSurface";
 
 const PAPER_STYLE = {
@@ -92,10 +93,12 @@ export function PageTurnAnimation({
   onComplete,
 }: Props) {
   // Where the outgoing page settles in the "done" stack. Matches the offsets
-  // used by PageStack for finished pages so there's no pop on handoff.
-  const landX = -5 - doneIndex * 0.6;
-  const landY = 4 + doneIndex * 0.9;
-  const landRot = doneIndex % 2 === 0 ? -0.9 : 0.7;
+  // used by PageStack for finished pages so there's no pop on handoff. RES-19:
+  // doneSlotOffset clamps past MAX_DONE_VISIBLE, so beyond the cap the outgoing
+  // page lands on the deepest visible slot (stacking on top of the existing
+  // paper there) rather than drifting further off.
+  const { offsetX: landX, offsetY: landY, rotate: landRot } =
+    doneSlotOffset(doneIndex);
 
   return (
     <>

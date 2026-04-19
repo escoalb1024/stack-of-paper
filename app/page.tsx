@@ -10,6 +10,7 @@ import { useEffect, useLayoutEffect, useReducer, useRef, useState } from "react"
 import { CameraContainer } from "@/components/CameraContainer";
 import { Desk } from "@/components/Desk";
 import { HiddenTextarea } from "@/components/HiddenTextarea";
+import { PageCountIndicator } from "@/components/PageCountIndicator";
 import { PageStack } from "@/components/PageStack";
 import { PageTurnAnimation } from "@/components/PageTurnAnimation";
 import {
@@ -207,6 +208,12 @@ export default function Home() {
           textDispatch({ type: "BACKSPACE" });
           setKeystrokeCount((c) => c + 1);
         }}
+      />
+
+      <PageCountIndicator
+        current={textState.pageIndex + 1}
+        total={textState.pages.length}
+        visible={mode === "WRITING" || mode === "PAGE_TURN"}
       />
 
       {/* Dev affordance — state + char count. Remove once the journal UI
