@@ -11,6 +11,7 @@ import { CameraContainer } from "@/components/CameraContainer";
 import { Desk } from "@/components/Desk";
 import { HiddenTextarea } from "@/components/HiddenTextarea";
 import { PageCountIndicator } from "@/components/PageCountIndicator";
+import { PageNavAnimation } from "@/components/PageNavAnimation";
 import { PageStack } from "@/components/PageStack";
 import { PageTurnAnimation } from "@/components/PageTurnAnimation";
 import {
@@ -53,6 +54,28 @@ export default function Home() {
   // whenever the active page grows a new line (NEWLINE or WRAP_LINE).
   const [lineBreakCount, setLineBreakCount] = useState(0);
   const prevLineCountRef = useRef(1);
+
+  // RES-34: index of the page the user is reviewing while zoomed out. Only
+  // meaningful in ZOOM_OUT / PAGE_NAV — the page actually rendered on the
+  // active slot is derived at render time (see displayedPageIndex below), so
+  // during writing this value can sit stale without affecting anything. We
+  // reset it to textState.pageIndex at review boundaries (Esc from WRITING,
+  // CLICK_PAGE_STACK from ZOOM_OUT) in the event handlers themselves, which
+  // avoids a set-state-in-effect sync hook.
+  const [viewingPageIndex, setViewingPageIndex] = useState(0);
+
+  // RES-34: direction of the in-flight page-nav animation. null outside of
+  // PAGE_NAV. Drives which easing/choreography PageNavAnimation plays.
+  const [navDir, setNavDir] = useState<"next" | "prev" | null>(null);
+
+  // RES-34: the page index actually shown on the active slot. During review
+  // it's whatever page the user has arrow-keyed to; otherwise it tracks the
+  // write-active page. Derived so PageSurface (and its cursorRef) stay bound
+  // to the write-active page during WRITING without any syncing hook.
+  const displayedPageIndex =
+    mode === "ZOOM_OUT" || mode === "PAGE_NAV"
+      ? viewingPageIndex
+      : textState.pageIndex;
 
 
   // RES-11: cursor marker ref + measured position in desk-space.
@@ -133,17 +156,54 @@ export default function Home() {
       x: PAGE_ACTIVE_LEFT + WRITING_MARGIN_X + el.offsetLeft + PEN_LEAD_X,
       y: PAGE_ACTIVE_TOP + WRITING_MARGIN_Y + lineDiv.offsetTop + TEXT_FONT_SIZE,
     });
-  }, [textState]);
+    // RES-34: displayedPageIndex can change the rendered page (and thus the
+    // cursor ref's position) without a textState change, so it needs to be
+    // a dep. Without this, resuming writing after review leaves the camera
+    // briefly pointed at the reviewed page's last char.
+  }, [textState, displayedPageIndex]);
 
-  // Esc during WRITING → zoom out.
+  // Esc during WRITING → zoom out. RES-34: also seed viewingPageIndex to the
+  // current write page so the reviewer lands on the tail, not wherever it was
+  // left by the previous review session.
   useEffect(() => {
     if (mode !== "WRITING") return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") dispatch({ type: "ESC_PRESSED" });
+      if (e.key === "Escape") {
+        setViewingPageIndex(textState.pageIndex);
+        dispatch({ type: "ESC_PRESSED" });
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [mode]);
+  }, [mode, textState.pageIndex]);
+
+  // RES-34: ← / → flip through the stack while in ZOOM_OUT. No-op when only
+  // one page exists or when already at a boundary (no wrap). Dispatches
+  // NAV_START to move the FSM into PAGE_NAV; PageNavAnimation's completion
+  // callback below returns us to ZOOM_OUT. Arrow presses during PAGE_NAV are
+  // ignored by construction (listener is scoped to ZOOM_OUT).
+  useEffect(() => {
+    if (mode !== "ZOOM_OUT") return;
+    if (textState.pages.length <= 1) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "ArrowLeft" && viewingPageIndex > 0) {
+        e.preventDefault();
+        setNavDir("prev");
+        setViewingPageIndex(viewingPageIndex - 1);
+        dispatch({ type: "NAV_START" });
+      } else if (
+        e.key === "ArrowRight" &&
+        viewingPageIndex < textState.pages.length - 1
+      ) {
+        e.preventDefault();
+        setNavDir("next");
+        setViewingPageIndex(viewingPageIndex + 1);
+        dispatch({ type: "NAV_START" });
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [mode, viewingPageIndex, textState.pages.length]);
 
   return (
     <main className="relative h-screen w-screen overflow-clip bg-[#2a2621]">
@@ -156,7 +216,13 @@ export default function Home() {
       >
         <Desk>
           <PageStack
-            onClick={() => dispatch({ type: "CLICK_PAGE_STACK" })}
+            onClick={() => {
+              // RES-34: snap review back to the tail before zooming in so
+              // cursorRef re-mounts against the write-active page and the
+              // camera targets the right spot on handoff.
+              setViewingPageIndex(textState.pageIndex);
+              dispatch({ type: "CLICK_PAGE_STACK" });
+            }}
             doneCount={
               // During PAGE_TURN the outgoing page is still visibly animating
               // into the done stack via PageTurnAnimation, so we render one
@@ -166,14 +232,24 @@ export default function Home() {
                 ? Math.max(0, textState.pageIndex - 1)
                 : textState.pageIndex
             }
-            showActive={mode !== "PAGE_TURN"}
+            showActive={mode !== "PAGE_TURN" && mode !== "PAGE_NAV"}
           />
-          {/* RES-18: hide the live PageSurface during PAGE_TURN so only the
-              PageTurnAnimation overlay is visible. Kept mounted (via opacity)
-              so cursorRef remains measurable and the pen lands on the new
-              top-left as soon as the turn completes. */}
-          <div style={{ opacity: mode === "PAGE_TURN" ? 0 : 1 }}>
-            <PageSurface page={activePage(textState)} cursorRef={cursorRef} />
+          {/* RES-18/34: hide the live PageSurface during PAGE_TURN and
+              PAGE_NAV so only the animation overlay is visible. Kept
+              mounted (via opacity) so cursorRef remains measurable.
+              displayedPageIndex tracks the write-active page during
+              WRITING and the reviewed page during ZOOM_OUT, so the cursor
+              measurement stays correct for WRITING without any sync hook. */}
+          <div
+            style={{
+              opacity:
+                mode === "PAGE_TURN" || mode === "PAGE_NAV" ? 0 : 1,
+            }}
+          >
+            <PageSurface
+              page={textState.pages[displayedPageIndex]}
+              cursorRef={cursorRef}
+            />
           </div>
           {mode === "PAGE_TURN" && textState.pageIndex > 0 && (
             <PageTurnAnimation
@@ -181,6 +257,29 @@ export default function Home() {
               incomingPage={activePage(textState)}
               doneIndex={textState.pageIndex - 1}
               onComplete={() => dispatch({ type: "PAGE_TURN_COMPLETE" })}
+            />
+          )}
+          {mode === "PAGE_NAV" && navDir !== null && (
+            <PageNavAnimation
+              direction={navDir}
+              outgoingPage={
+                textState.pages[
+                  navDir === "next"
+                    ? viewingPageIndex - 1
+                    : viewingPageIndex + 1
+                ]
+              }
+              incomingPage={textState.pages[viewingPageIndex]}
+              // "next" flips from K→K+1: outgoing (K) lands on slot K.
+              // "prev" flips from K→K-1: incoming (K-1) rises from slot K-1.
+              // doneSlotOffset clamps past MAX_DONE_VISIBLE-1 for us.
+              doneIndex={
+                navDir === "next" ? viewingPageIndex - 1 : viewingPageIndex
+              }
+              onComplete={() => {
+                setNavDir(null);
+                dispatch({ type: "NAV_COMPLETE" });
+              }}
             />
           )}
           <PenHand
@@ -211,9 +310,14 @@ export default function Home() {
       />
 
       <PageCountIndicator
-        current={textState.pageIndex + 1}
+        current={displayedPageIndex + 1}
         total={textState.pages.length}
-        visible={mode === "WRITING" || mode === "PAGE_TURN"}
+        visible={
+          mode === "WRITING" ||
+          mode === "PAGE_TURN" ||
+          mode === "ZOOM_OUT" ||
+          mode === "PAGE_NAV"
+        }
       />
 
       {/* Dev affordance — state + char count. Remove once the journal UI

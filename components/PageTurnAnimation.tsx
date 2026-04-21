@@ -40,7 +40,7 @@ import { Page } from "@/lib/text";
 import { doneSlotOffset } from "./PageStack";
 import { PageSurface } from "./PageSurface";
 
-const PAPER_STYLE = {
+export const PAPER_STYLE = {
   position: "absolute" as const,
   left: PAGE_ACTIVE_LEFT,
   top: PAGE_ACTIVE_TOP,
@@ -52,7 +52,7 @@ const PAPER_STYLE = {
   borderRadius: 2,
 };
 
-const OVERLAY_STYLE = {
+export const OVERLAY_STYLE = {
   position: "absolute" as const,
   left: 0,
   top: 0,
@@ -71,7 +71,7 @@ const OVERLAY_STYLE = {
 
 const CENTER_X = PAGE_ACTIVE_LEFT + PAGE_WIDTH / 2;
 const CENTER_Y = PAGE_ACTIVE_TOP + PAGE_HEIGHT / 2;
-const TRANSFORM_ORIGIN = `${CENTER_X}px ${CENTER_Y}px`;
+export const TRANSFORM_ORIGIN = `${CENTER_X}px ${CENTER_Y}px`;
 
 // Total turn duration. Longer than the spec's 600–800ms target to read as a
 // more deliberate, physical paper slide.
