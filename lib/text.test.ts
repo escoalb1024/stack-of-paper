@@ -103,6 +103,54 @@ test("pickWrapPoint breaks past a trailing space (treats it as a boundary)", () 
   assert.equal(chars[breakAt - 1].char, " ");
 });
 
+test("ADD_PAGE splits the active page at splitAt and advances pageIndex", () => {
+  // Build a page with 4 lines: line0, line1, line2, line3.
+  let s = typeString(initialTextState, "line0");
+  s = textReducer(s, { type: "NEWLINE" });
+  s = typeString(s, "line1");
+  s = textReducer(s, { type: "NEWLINE" });
+  s = typeString(s, "line2");
+  s = textReducer(s, { type: "NEWLINE" });
+  s = typeString(s, "line3");
+
+  const turned = textReducer(s, { type: "ADD_PAGE", splitAt: 3 });
+  assert.equal(turned.pages.length, 2);
+  assert.equal(turned.pageIndex, 1);
+  assert.equal(turned.pages[0].lines.length, 3);
+  assert.equal(turned.pages[1].lines.length, 1);
+  assert.equal(
+    turned.pages[1].lines[0].chars.map((c) => c.char).join(""),
+    "line3",
+    "trailing line moves to the new page intact",
+  );
+});
+
+test("ADD_PAGE preserves CharData jitter on moved lines", () => {
+  let s = typeString(initialTextState, "keep");
+  s = textReducer(s, { type: "NEWLINE" });
+  s = typeString(s, "move");
+  const originalMoved = s.pages[0].lines[1].chars.slice();
+  const turned = textReducer(s, { type: "ADD_PAGE", splitAt: 1 });
+  assert.deepEqual(turned.pages[1].lines[0].chars, originalMoved);
+});
+
+test("ADD_PAGE is a no-op when splitAt is out of range", () => {
+  let s = typeString(initialTextState, "only");
+  for (const splitAt of [-1, 0, 1, 2, 99]) {
+    const turned = textReducer(s, { type: "ADD_PAGE", splitAt });
+    assert.equal(turned.pages.length, 1, `splitAt=${splitAt} should not add a page`);
+    assert.equal(turned.pageIndex, 0);
+  }
+});
+
+test("activePage follows pageIndex after ADD_PAGE", () => {
+  let s = typeString(initialTextState, "a");
+  s = textReducer(s, { type: "NEWLINE" });
+  s = typeString(s, "b");
+  const turned = textReducer(s, { type: "ADD_PAGE", splitAt: 1 });
+  assert.equal(activePage(turned).lines[0].chars.map((c) => c.char).join(""), "b");
+});
+
 test("pickWrapPoint returns 0 for degenerate input", () => {
   assert.equal(pickWrapPoint([]), 0);
   const singleChar = typeString(initialTextState, "x");

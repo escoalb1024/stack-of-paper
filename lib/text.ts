@@ -40,7 +40,14 @@ export type TextAction =
   // indices [breakAt, end) to a fresh trailing line. Dispatched by the
   // layout-time measurer in app/page.tsx when the rendered line exceeds the
   // writable area. No-op if breakAt is out of range.
-  | { type: "WRAP_LINE"; breakAt: number };
+  | { type: "WRAP_LINE"; breakAt: number }
+  // Page fill (RES-17): split the active page at `splitAt`, moving lines at
+  // indices [splitAt, end) onto a fresh new page appended to `pages`, and
+  // advance `pageIndex` to the new page. Dispatched by the layout-time
+  // page-fill detector in app/page.tsx once a page exceeds its line capacity.
+  // No-op if splitAt is out of range. The moved lines keep their existing
+  // CharData (jitter values unchanged) so the visual state is stable.
+  | { type: "ADD_PAGE"; splitAt: number };
 
 export const emptyPage = (): Page => ({ lines: [{ chars: [] }] });
 
@@ -115,6 +122,18 @@ export function textReducer(state: TextState, action: TextAction): TextState {
         lines.push({ chars: last.chars.slice(breakAt) });
         return { lines };
       });
+
+    case "ADD_PAGE": {
+      const current = state.pages[state.pageIndex];
+      const { splitAt } = action;
+      if (splitAt <= 0 || splitAt >= current.lines.length) return state;
+      const kept: Page = { lines: current.lines.slice(0, splitAt) };
+      const moved: Page = { lines: current.lines.slice(splitAt) };
+      const pages = state.pages.slice();
+      pages[state.pageIndex] = kept;
+      pages.push(moved);
+      return { ...state, pages, pageIndex: pages.length - 1 };
+    }
   }
 }
 
