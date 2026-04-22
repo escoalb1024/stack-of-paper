@@ -223,15 +223,7 @@ export default function Home() {
               setViewingPageIndex(textState.pageIndex);
               dispatch({ type: "CLICK_PAGE_STACK" });
             }}
-            doneCount={
-              // During PAGE_TURN the outgoing page is still visibly animating
-              // into the done stack via PageTurnAnimation, so we render one
-              // fewer done page here to avoid a double paper. It slots in on
-              // handoff once PAGE_TURN_COMPLETE flips us back to WRITING.
-              mode === "PAGE_TURN"
-                ? Math.max(0, textState.pageIndex - 1)
-                : textState.pageIndex
-            }
+            doneCount={textState.pageIndex}
             showActive={mode !== "PAGE_TURN" && mode !== "PAGE_NAV"}
           />
           {/* RES-18/34: hide the live PageSurface during PAGE_TURN and
@@ -270,12 +262,6 @@ export default function Home() {
                 ]
               }
               incomingPage={textState.pages[viewingPageIndex]}
-              // "next" flips from K→K+1: outgoing (K) lands on slot K.
-              // "prev" flips from K→K-1: incoming (K-1) rises from slot K-1.
-              // doneSlotOffset clamps past MAX_DONE_VISIBLE-1 for us.
-              doneIndex={
-                navDir === "next" ? viewingPageIndex - 1 : viewingPageIndex
-              }
               onComplete={() => {
                 setNavDir(null);
                 dispatch({ type: "NAV_COMPLETE" });
