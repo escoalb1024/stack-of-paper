@@ -32,6 +32,7 @@ import {
 } from "@/lib/scene";
 import { initialState, reducer } from "@/lib/state";
 import { activePage, initialTextState, textReducer } from "@/lib/text";
+import { buildEntry, loadEntry, saveEntry, todayISO } from "@/lib/storage";
 
 // Small horizontal nudge so the pen nib sits just to the right of the last
 // character, as if hovering for the next one.
@@ -46,6 +47,13 @@ const DEFAULT_CURSOR = {
 export default function Home() {
   const [mode, dispatch] = useReducer(reducer, initialState);
   const [textState, textDispatch] = useReducer(textReducer, initialTextState);
+
+  // RES-21: once a draft has been hydrated (or confirmed absent) we can
+  // start autosaving. Gating avoids the first-render save clobbering a
+  // saved entry before the HYDRATE dispatch lands.
+  const [hydrated, setHydrated] = useState(false);
+  const existingEntryRef = useRef<Awaited<ReturnType<typeof loadEntry>>>(undefined);
+  const dateRef = useRef<string>(todayISO());
 
   // RES-12: keystroke counter drives pen jitter animation.
   const [keystrokeCount, setKeystrokeCount] = useState(0);
@@ -204,6 +212,42 @@ export default function Home() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [mode, viewingPageIndex, textState.pages.length]);
+
+  // RES-21: on mount, load today's draft (if any) and hydrate textState.
+  // Runs exactly once — dateRef is stable and we don't want to re-hydrate
+  // after the user has started typing.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const existing = await loadEntry(dateRef.current);
+      if (cancelled) return;
+      if (existing && existing.pages.length > 0) {
+        existingEntryRef.current = existing;
+        textDispatch({ type: "HYDRATE", pages: existing.pages });
+      }
+      setHydrated(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // RES-21: debounced autosave. 500ms after the last textState change (once
+  // hydrated) we persist the entry. A later save supersedes an in-flight
+  // one thanks to the cleanup-driven timeout reset.
+  useEffect(() => {
+    if (!hydrated) return;
+    const handle = setTimeout(() => {
+      const entry = buildEntry(
+        dateRef.current,
+        textState.pages,
+        existingEntryRef.current,
+      );
+      existingEntryRef.current = entry;
+      void saveEntry(entry);
+    }, 500);
+    return () => clearTimeout(handle);
+  }, [hydrated, textState.pages]);
 
   return (
     <main className="relative h-screen w-screen overflow-clip bg-[#2a2621]">
