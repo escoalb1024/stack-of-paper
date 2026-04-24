@@ -10,6 +10,7 @@ import { useEffect, useLayoutEffect, useReducer, useRef, useState } from "react"
 import { CameraContainer } from "@/components/CameraContainer";
 import { Desk } from "@/components/Desk";
 import { HiddenTextarea } from "@/components/HiddenTextarea";
+import { JournalClosed } from "@/components/JournalClosed";
 import { PageCountIndicator } from "@/components/PageCountIndicator";
 import { PageNavAnimation } from "@/components/PageNavAnimation";
 import { PageStack } from "@/components/PageStack";
@@ -34,6 +35,7 @@ import { initialState, reducer } from "@/lib/state";
 import { activePage, initialTextState, textReducer } from "@/lib/text";
 import {
   buildEntry,
+  countJournaledEntries,
   loadEntry,
   promoteStaleDrafts,
   saveEntry,
@@ -77,6 +79,11 @@ export default function Home() {
   // CLICK_PAGE_STACK from ZOOM_OUT) in the event handlers themselves, which
   // avoids a set-state-in-effect sync hook.
   const [viewingPageIndex, setViewingPageIndex] = useState(0);
+
+  // RES-24: count of journaled entries, drives the closed-journal thickness.
+  // Loaded on mount alongside the stale-draft promotion so it reflects any
+  // rollovers that just happened.
+  const [journaledCount, setJournaledCount] = useState(0);
 
   // RES-34: direction of the in-flight page-nav animation. null outside of
   // PAGE_NAV. Drives which easing/choreography PageNavAnimation plays.
@@ -235,6 +242,11 @@ export default function Home() {
         existingEntryRef.current = existing;
         textDispatch({ type: "HYDRATE", pages: existing.pages });
       }
+      // RES-24: count after promotion so yesterday's just-promoted drafts are
+      // reflected in the journal thickness on first paint.
+      const count = await countJournaledEntries();
+      if (cancelled) return;
+      setJournaledCount(count);
       setHydrated(true);
     })();
     return () => {
@@ -269,6 +281,11 @@ export default function Home() {
         onZoomOutComplete={() => dispatch({ type: "ZOOM_OUT_COMPLETE" })}
       >
         <Desk>
+          <JournalClosed
+            entryCount={journaledCount}
+            onClick={() => dispatch({ type: "CLICK_JOURNAL" })}
+            interactive={mode === "DESK_IDLE"}
+          />
           <PageStack
             onClick={() => {
               // RES-34: snap review back to the tail before zooming in so

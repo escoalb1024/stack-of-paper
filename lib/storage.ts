@@ -88,6 +88,21 @@ export async function promoteStaleDrafts(today: string): Promise<string[]> {
   return promoted;
 }
 
+// Count entries with status "journaled". Used by the closed-journal visual
+// (RES-24) to show thickness based on how much has been written. Cheap enough
+// to run on mount; the journal index (RES-25) will likely replace this with
+// a full list query.
+export async function countJournaledEntries(): Promise<number> {
+  const allKeys = await keys();
+  let count = 0;
+  for (const key of allKeys) {
+    if (typeof key !== "string" || !key.startsWith(ENTRY_PREFIX)) continue;
+    const entry = await get<Entry>(key);
+    if (entry?.status === "journaled") count++;
+  }
+  return count;
+}
+
 export function buildEntry(
   date: string,
   pages: Page[],
