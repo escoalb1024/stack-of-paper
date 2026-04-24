@@ -3,7 +3,14 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildEntry, derivePlainText, entryKey, todayISO } from "./storage.ts";
+import {
+  buildEntry,
+  derivePlainText,
+  entryKey,
+  shouldPromoteDraft,
+  todayISO,
+  type Entry,
+} from "./storage.ts";
 import { initialTextState, textReducer, type TextState } from "./text.ts";
 
 function typeString(state: TextState, s: string): TextState {
@@ -49,6 +56,38 @@ test("buildEntry preserves createdAt and status from existing entry", () => {
   assert.equal(second.status, "journaled");
   assert.ok(second.updatedAt >= first.updatedAt);
   assert.equal(second.plainText, "hi!");
+});
+
+test("shouldPromoteDraft promotes yesterday's draft but not today's", () => {
+  const base: Omit<Entry, "date" | "status"> = {
+    id: "x",
+    pages: [],
+    plainText: "",
+    createdAt: 0,
+    updatedAt: 0,
+  };
+  const today = "2026-04-23";
+  assert.equal(
+    shouldPromoteDraft({ ...base, date: "2026-04-22", status: "draft" }, today),
+    true,
+  );
+  assert.equal(
+    shouldPromoteDraft({ ...base, date: today, status: "draft" }, today),
+    false,
+  );
+  assert.equal(
+    shouldPromoteDraft(
+      { ...base, date: "2026-04-22", status: "journaled" },
+      today,
+    ),
+    false,
+  );
+  // Defensive: an entry dated in the future (clock skew, travel) shouldn't
+  // be promoted.
+  assert.equal(
+    shouldPromoteDraft({ ...base, date: "2026-04-24", status: "draft" }, today),
+    false,
+  );
 });
 
 test("HYDRATE replaces pages and lands pageIndex on the last page", () => {

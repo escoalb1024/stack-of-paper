@@ -9,7 +9,7 @@
 // the same keying: promote yesterday's draft to journaled on load, enumerate
 // all keys for the journal index.
 
-import { get, set } from "idb-keyval";
+import { get, keys, set } from "idb-keyval";
 import type { Page } from "./text.ts";
 
 export type EntryStatus = "draft" | "journaled";
@@ -58,6 +58,36 @@ export async function saveEntry(entry: Entry): Promise<void> {
 
 // Build an Entry for persistence from in-memory pages. `existing` lets the
 // caller preserve createdAt/status across saves within the same day.
+// RES-22: previous-day drafts are auto-promoted to journaled on load so the
+// work is preserved even when the user closed the tab without hitting
+// "Add to Journal". Today's draft is left alone — the user may still be
+// mid-session. Date strings are ISO (YYYY-MM-DD) so lexical comparison is
+// equivalent to chronological.
+export function shouldPromoteDraft(entry: Entry, today: string): boolean {
+  return entry.status === "draft" && entry.date < today;
+}
+
+// Scan all stored entries and promote stale drafts (drafts dated before
+// `today`) to journaled. Returns the dates that were promoted. Does not
+// delete any entries — all previous work is preserved per RES-22.
+export async function promoteStaleDrafts(today: string): Promise<string[]> {
+  const allKeys = await keys();
+  const promoted: string[] = [];
+  for (const key of allKeys) {
+    if (typeof key !== "string" || !key.startsWith(ENTRY_PREFIX)) continue;
+    const entry = await get<Entry>(key);
+    if (!entry || !shouldPromoteDraft(entry, today)) continue;
+    const updated: Entry = {
+      ...entry,
+      status: "journaled",
+      updatedAt: Date.now(),
+    };
+    await set(key, updated);
+    promoted.push(entry.date);
+  }
+  return promoted;
+}
+
 export function buildEntry(
   date: string,
   pages: Page[],

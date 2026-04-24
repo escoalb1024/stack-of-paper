@@ -32,7 +32,13 @@ import {
 } from "@/lib/scene";
 import { initialState, reducer } from "@/lib/state";
 import { activePage, initialTextState, textReducer } from "@/lib/text";
-import { buildEntry, loadEntry, saveEntry, todayISO } from "@/lib/storage";
+import {
+  buildEntry,
+  loadEntry,
+  promoteStaleDrafts,
+  saveEntry,
+  todayISO,
+} from "@/lib/storage";
 
 // Small horizontal nudge so the pen nib sits just to the right of the last
 // character, as if hovering for the next one.
@@ -214,11 +220,15 @@ export default function Home() {
   }, [mode, viewingPageIndex, textState.pages.length]);
 
   // RES-21: on mount, load today's draft (if any) and hydrate textState.
-  // Runs exactly once — dateRef is stable and we don't want to re-hydrate
-  // after the user has started typing.
+  // RES-22: before loading, promote any stale drafts from previous days to
+  // journaled so they're preserved even when the user closed without hitting
+  // "Add to Journal". Runs exactly once — dateRef is stable and we don't want
+  // to re-hydrate after the user has started typing.
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      await promoteStaleDrafts(dateRef.current);
+      if (cancelled) return;
       const existing = await loadEntry(dateRef.current);
       if (cancelled) return;
       if (existing && existing.pages.length > 0) {
