@@ -364,6 +364,7 @@ export default function Home() {
         state={mode}
         penX={cursorPos.x}
         penY={cursorPos.y}
+        keystrokeCount={keystrokeCount}
         onZoomInComplete={() => dispatch({ type: "ZOOM_IN_COMPLETE" })}
         onZoomOutComplete={() => dispatch({ type: "ZOOM_OUT_COMPLETE" })}
       >
