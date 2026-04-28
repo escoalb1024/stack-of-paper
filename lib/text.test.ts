@@ -156,3 +156,17 @@ test("pickWrapPoint returns 0 for degenerate input", () => {
   const singleChar = typeString(initialTextState, "x");
   assert.equal(pickWrapPoint(lastLine(singleChar).chars), 0);
 });
+
+test("RESET returns to a fresh single-page initial state", () => {
+  let s = typeString(initialTextState, "hello");
+  s = textReducer(s, { type: "NEWLINE" });
+  s = typeString(s, "world");
+  s = textReducer(s, { type: "ADD_PAGE", splitAt: 1 });
+  assert.equal(s.pages.length, 2);
+  assert.equal(s.pageIndex, 1);
+  const reset = textReducer(s, { type: "RESET" });
+  assert.equal(reset.pages.length, 1);
+  assert.equal(reset.pageIndex, 0);
+  assert.equal(reset.pages[0].lines.length, 1);
+  assert.equal(reset.pages[0].lines[0].chars.length, 0);
+});

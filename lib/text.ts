@@ -47,7 +47,14 @@ export type TextAction =
   // page-fill detector in app/page.tsx once a page exceeds its line capacity.
   // No-op if splitAt is out of range. The moved lines keep their existing
   // CharData (jitter values unchanged) so the visual state is stable.
-  | { type: "ADD_PAGE"; splitAt: number };
+  | { type: "ADD_PAGE"; splitAt: number }
+  // RES-21: replace the entire text state from a loaded entry. Used once
+  // per mount when an existing draft for today is hydrated from IndexedDB.
+  | { type: "HYDRATE"; pages: Page[] }
+  // RES-23: clear all written content back to a single fresh page. Used
+  // after the JOURNAL_SLIDE animation lands the entry in the journal so a
+  // blank page stack greets the user on the desk again.
+  | { type: "RESET" };
 
 export const emptyPage = (): Page => ({ lines: [{ chars: [] }] });
 
@@ -122,6 +129,14 @@ export function textReducer(state: TextState, action: TextAction): TextState {
         lines.push({ chars: last.chars.slice(breakAt) });
         return { lines };
       });
+
+    case "HYDRATE": {
+      if (action.pages.length === 0) return state;
+      return { pages: action.pages, pageIndex: action.pages.length - 1 };
+    }
+
+    case "RESET":
+      return initialTextState;
 
     case "ADD_PAGE": {
       const current = state.pages[state.pageIndex];
