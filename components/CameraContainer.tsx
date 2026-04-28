@@ -50,7 +50,7 @@ const MAX_GAZE_FRAC_X = 0.28;
 const MAX_GAZE_FRAC_Y = 0.22;
 // Settle delay — once the mouse has been idle this long, target collapses
 // back to the pen and the spring carries the camera home.
-const MOUSE_IDLE_MS = 2000;
+const MOUSE_IDLE_MS = 1500;
 
 // Saturating rubber-band: f(0)=0, f(±max)=±max/2, asymptote at ±max.
 // The shape mirrors the iOS scroll rubber-band — easy entry near the pen,
