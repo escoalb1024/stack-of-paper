@@ -8,9 +8,10 @@
 //   ZOOM_OUT      → click "Add to Journal" → JOURNAL_SLIDE
 //   ZOOM_OUT      → click PageStack      → ZOOM_IN (resume)
 //   ZOOM_OUT      → ← / →                → PAGE_NAV → ZOOM_OUT
+//   ZOOM_OUT      → click Journal        → JOURNAL_OPEN
 //   JOURNAL_SLIDE → animation complete   → DESK_IDLE
 //   DESK_IDLE     → click Journal        → JOURNAL_OPEN
-//   JOURNAL_OPEN  → Esc/close            → DESK_IDLE
+//   JOURNAL_OPEN  → Esc/close            → DESK_IDLE or ZOOM_OUT (returnTo)
 //
 // RES-34 makes ZOOM_OUT a proper resting state (no auto-return to DESK_IDLE)
 // and adds PAGE_NAV for the arrow-key flip-through animation. DESK_IDLE is
@@ -34,7 +35,10 @@ export type Action =
   | { type: "CLICK_ADD_TO_JOURNAL" }
   | { type: "JOURNAL_SLIDE_COMPLETE" }
   | { type: "CLICK_JOURNAL" }
-  | { type: "CLOSE_JOURNAL" }
+  // returnTo lets a ZOOM_OUT → JOURNAL_OPEN → close round-trip return to
+  // ZOOM_OUT instead of DESK_IDLE, preserving the on-desk draft view. Defaults
+  // to DESK_IDLE when omitted (the original click-from-desk path).
+  | { type: "CLOSE_JOURNAL"; returnTo?: "DESK_IDLE" | "ZOOM_OUT" }
   | { type: "PAGE_FILLED" }
   | { type: "PAGE_TURN_COMPLETE" }
   | { type: "NAV_START" }
@@ -66,6 +70,7 @@ export function reducer(state: AppState, action: Action): AppState {
       if (action.type === "CLICK_PAGE_STACK") return "ZOOM_IN";
       if (action.type === "CLICK_ADD_TO_JOURNAL") return "JOURNAL_SLIDE";
       if (action.type === "NAV_START") return "PAGE_NAV";
+      if (action.type === "CLICK_JOURNAL") return "JOURNAL_OPEN";
       return state;
 
     case "PAGE_NAV":
@@ -77,7 +82,7 @@ export function reducer(state: AppState, action: Action): AppState {
       return state;
 
     case "JOURNAL_OPEN":
-      if (action.type === "CLOSE_JOURNAL") return "DESK_IDLE";
+      if (action.type === "CLOSE_JOURNAL") return action.returnTo ?? "DESK_IDLE";
       return state;
   }
 }

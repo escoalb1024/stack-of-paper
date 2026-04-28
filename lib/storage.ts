@@ -103,6 +103,24 @@ export async function countJournaledEntries(): Promise<number> {
   return count;
 }
 
+// List all journaled entries, newest first. Powers the journal index (RES-25).
+// Drafts are intentionally excluded — the journal shows past entries, and any
+// stale drafts from previous days will have been promoted by
+// `promoteStaleDrafts` on mount, so the only remaining draft is today's
+// in-progress entry (which lives on the desk, not in the journal).
+export async function listJournaledEntries(): Promise<Entry[]> {
+  const allKeys = await keys();
+  const entries: Entry[] = [];
+  for (const key of allKeys) {
+    if (typeof key !== "string" || !key.startsWith(ENTRY_PREFIX)) continue;
+    const entry = await get<Entry>(key);
+    if (entry?.status === "journaled") entries.push(entry);
+  }
+  // ISO dates sort lexically; reverse for newest-first.
+  entries.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  return entries;
+}
+
 export function buildEntry(
   date: string,
   pages: Page[],

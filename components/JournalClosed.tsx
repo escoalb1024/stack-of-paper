@@ -23,11 +23,15 @@ export const JOURNAL_LEFT = 20;
 export const JOURNAL_TOP = -80;
 
 // Sized to match a single page (PAGE_WIDTH × PAGE_HEIGHT from lib/scene) so
-// the journal reads as the same scale as the paper on the desk.
-const BOOK_WIDTH = 520;
-const BOOK_HEIGHT = 673;
+// the journal reads as the same scale as the paper on the desk. Exported so
+// the RES-23 slide animation can land its papers on the same footprint.
+export const JOURNAL_BOOK_WIDTH = 520;
+export const JOURNAL_BOOK_HEIGHT = 673;
+const BOOK_WIDTH = JOURNAL_BOOK_WIDTH;
+const BOOK_HEIGHT = JOURNAL_BOOK_HEIGHT;
 // Clockwise tilt so the spine faces up-left and the fore-edge faces down-right.
-const BOOK_ROTATION_DEG = 32;
+export const JOURNAL_ROTATION_DEG = 32;
+const BOOK_ROTATION_DEG = JOURNAL_ROTATION_DEG;
 
 // Each journaled entry contributes one cream slice on the book's fore-edge up
 // to this cap. Beyond it the book's "fullness" plateaus — matches PageStack's

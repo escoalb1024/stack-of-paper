@@ -7,10 +7,13 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useReducer, useRef, useState } from "react";
+import { AddToJournalButton } from "@/components/AddToJournalButton";
 import { CameraContainer } from "@/components/CameraContainer";
 import { Desk } from "@/components/Desk";
 import { HiddenTextarea } from "@/components/HiddenTextarea";
 import { JournalClosed } from "@/components/JournalClosed";
+import { JournalOpen } from "@/components/JournalOpen";
+import { JournalSlideAnimation } from "@/components/JournalSlideAnimation";
 import { PageCountIndicator } from "@/components/PageCountIndicator";
 import { PageNavAnimation } from "@/components/PageNavAnimation";
 import { PageStack } from "@/components/PageStack";
@@ -36,6 +39,8 @@ import { activePage, initialTextState, textReducer } from "@/lib/text";
 import {
   buildEntry,
   countJournaledEntries,
+  type Entry,
+  listJournaledEntries,
   loadEntry,
   promoteStaleDrafts,
   saveEntry,
@@ -84,6 +89,17 @@ export default function Home() {
   // Loaded on mount alongside the stale-draft promotion so it reflects any
   // rollovers that just happened.
   const [journaledCount, setJournaledCount] = useState(0);
+
+  // RES-25: journaled entries for the open-journal index. Loaded lazily when
+  // the user opens the journal — keeping this out of the mount path means the
+  // initial paint isn't blocked on enumerating every past entry.
+  const [journalEntries, setJournalEntries] = useState<Entry[]>([]);
+
+  // Where to return after closing the journal. The journal is openable from
+  // both DESK_IDLE (fresh desk) and ZOOM_OUT (mid-session, draft visible on
+  // desk); recording the source lets close return there rather than always
+  // dropping back to DESK_IDLE and losing the in-progress view.
+  const journalReturnRef = useRef<"DESK_IDLE" | "ZOOM_OUT">("DESK_IDLE");
 
   // RES-34: direction of the in-flight page-nav animation. null outside of
   // PAGE_NAV. Drives which easing/choreography PageNavAnimation plays.
@@ -226,6 +242,37 @@ export default function Home() {
     return () => window.removeEventListener("keydown", onKey);
   }, [mode, viewingPageIndex, textState.pages.length]);
 
+  // RES-25: load journaled entries whenever the journal opens. Refreshing on
+  // each open (rather than caching for the session) means entries added via
+  // the "Add to Journal" flow in a prior browse cycle show up without a page
+  // reload. Drafts are filtered out server-side so this list is always "past
+  // entries".
+  useEffect(() => {
+    if (mode !== "JOURNAL_OPEN") return;
+    let cancelled = false;
+    (async () => {
+      const list = await listJournaledEntries();
+      if (cancelled) return;
+      setJournalEntries(list);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [mode]);
+
+  // RES-25: Esc while the journal is open closes it back to DESK_IDLE. Scoped
+  // to JOURNAL_OPEN so it doesn't conflict with the WRITING-mode Esc handler
+  // above.
+  useEffect(() => {
+    if (mode !== "JOURNAL_OPEN") return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape")
+        dispatch({ type: "CLOSE_JOURNAL", returnTo: journalReturnRef.current });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [mode]);
+
   // RES-21: on mount, load today's draft (if any) and hydrate textState.
   // RES-22: before loading, promote any stale drafts from previous days to
   // journaled so they're preserved even when the user closed without hitting
@@ -257,9 +304,15 @@ export default function Home() {
   // RES-21: debounced autosave. 500ms after the last textState change (once
   // hydrated) we persist the entry. A later save supersedes an in-flight
   // one thanks to the cleanup-driven timeout reset.
+  // RES-23: once today's entry has been journaled, suppress further autosaves
+  // to the same date key — they'd overwrite the journaled content. (Storing
+  // a same-day "second session" as its own entry would need a non-date key;
+  // out of scope for this ticket.) The check uses a ref read inside the
+  // timeout so it always sees the latest status without re-subscribing.
   useEffect(() => {
     if (!hydrated) return;
     const handle = setTimeout(() => {
+      if (existingEntryRef.current?.status === "journaled") return;
       const entry = buildEntry(
         dateRef.current,
         textState.pages,
@@ -270,6 +323,40 @@ export default function Home() {
     }, 500);
     return () => clearTimeout(handle);
   }, [hydrated, textState.pages]);
+
+  // RES-23: "Add to Journal" handler. Persists today's entry as journaled
+  // before triggering the slide animation so the data is safe even if the
+  // user navigates away mid-animation. Empty page stacks are no-ops on the
+  // storage side but still play the animation harmlessly.
+  const handleAddToJournal = async () => {
+    const hasContent = textState.pages.some((p) =>
+      p.lines.some((l) => l.chars.length > 0),
+    );
+    dispatch({ type: "CLICK_ADD_TO_JOURNAL" });
+    if (hasContent) {
+      const base = buildEntry(
+        dateRef.current,
+        textState.pages,
+        existingEntryRef.current,
+      );
+      const journaled = { ...base, status: "journaled" as const };
+      await saveEntry(journaled);
+      existingEntryRef.current = journaled;
+    }
+  };
+
+  // RES-23: JOURNAL_SLIDE animation finished. Reset the on-desk text to a
+  // fresh page stack, re-query the journaled count from storage so the
+  // closed-journal thickness reflects reality (covers the same-day re-journal
+  // edge case where an optimistic bump would overcount), and advance the
+  // FSM to DESK_IDLE.
+  const handleSlideComplete = async () => {
+    textDispatch({ type: "RESET" });
+    setViewingPageIndex(0);
+    dispatch({ type: "JOURNAL_SLIDE_COMPLETE" });
+    const count = await countJournaledEntries();
+    setJournaledCount(count);
+  };
 
   return (
     <main className="relative h-screen w-screen overflow-clip bg-[#2a2621]">
@@ -283,30 +370,48 @@ export default function Home() {
         <Desk>
           <JournalClosed
             entryCount={journaledCount}
-            onClick={() => dispatch({ type: "CLICK_JOURNAL" })}
-            interactive={mode === "DESK_IDLE"}
-          />
-          <PageStack
             onClick={() => {
-              // RES-34: snap review back to the tail before zooming in so
-              // cursorRef re-mounts against the write-active page and the
-              // camera targets the right spot on handoff.
-              setViewingPageIndex(textState.pageIndex);
-              dispatch({ type: "CLICK_PAGE_STACK" });
+              journalReturnRef.current =
+                mode === "ZOOM_OUT" ? "ZOOM_OUT" : "DESK_IDLE";
+              dispatch({ type: "CLICK_JOURNAL" });
             }}
-            doneCount={textState.pageIndex}
-            showActive={mode !== "PAGE_TURN" && mode !== "PAGE_NAV"}
+            interactive={mode === "DESK_IDLE" || mode === "ZOOM_OUT"}
           />
+          {mode !== "JOURNAL_SLIDE" && (
+            <PageStack
+              onClick={() => {
+                // RES-34: snap review back to the tail before zooming in so
+                // cursorRef re-mounts against the write-active page and the
+                // camera targets the right spot on handoff.
+                setViewingPageIndex(textState.pageIndex);
+                dispatch({ type: "CLICK_PAGE_STACK" });
+              }}
+              doneCount={textState.pageIndex}
+              showActive={mode !== "PAGE_TURN" && mode !== "PAGE_NAV"}
+            />
+          )}
+          {mode === "JOURNAL_SLIDE" && (
+            <JournalSlideAnimation
+              doneCount={textState.pageIndex}
+              onComplete={handleSlideComplete}
+            />
+          )}
           {/* RES-18/34: hide the live PageSurface during PAGE_TURN and
               PAGE_NAV so only the animation overlay is visible. Kept
               mounted (via opacity) so cursorRef remains measurable.
               displayedPageIndex tracks the write-active page during
               WRITING and the reviewed page during ZOOM_OUT, so the cursor
-              measurement stays correct for WRITING without any sync hook. */}
+              measurement stays correct for WRITING without any sync hook.
+              RES-23: also hide during JOURNAL_SLIDE so the rendered text
+              doesn't ghost over the slide animation. */}
           <div
             style={{
               opacity:
-                mode === "PAGE_TURN" || mode === "PAGE_NAV" ? 0 : 1,
+                mode === "PAGE_TURN" ||
+                mode === "PAGE_NAV" ||
+                mode === "JOURNAL_SLIDE"
+                  ? 0
+                  : 1,
             }}
           >
             <PageSurface
@@ -347,6 +452,15 @@ export default function Home() {
             lineBreakCount={lineBreakCount}
             pageTurning={mode === "PAGE_TURN"}
           />
+          {/* RES-23: in-scene "Add to Journal" affordance. Lives in
+              desk-space so it sits on the desk surface alongside the page
+              stack rather than floating in viewport chrome. Visibility is
+              gated to ZOOM_OUT so it fades in once the camera settles and
+              fades out as the slide animation begins. */}
+          <AddToJournalButton
+            visible={mode === "ZOOM_OUT"}
+            onClick={handleAddToJournal}
+          />
         </Desk>
       </CameraContainer>
 
@@ -377,11 +491,22 @@ export default function Home() {
         }
       />
 
+      {mode === "JOURNAL_OPEN" && (
+        <JournalOpen
+          entries={journalEntries}
+          onClose={() =>
+            dispatch({ type: "CLOSE_JOURNAL", returnTo: journalReturnRef.current })
+          }
+        />
+      )}
+
       {/* Dev affordance — state + char count. Remove once the journal UI
           lands in later tickets. */}
       <div className="pointer-events-none fixed bottom-3 right-3 rounded bg-black/40 px-2 py-1 font-mono text-xs text-white/80">
         {mode}
         {mode === "WRITING" ? "  ·  Esc to zoom out" : null}
+        {mode === "ZOOM_OUT" ? "  ·  click pages to resume, or Add to Journal" : null}
+        {mode === "JOURNAL_OPEN" ? "  ·  Esc to close" : null}
       </div>
     </main>
   );

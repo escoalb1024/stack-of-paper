@@ -50,7 +50,11 @@ export type TextAction =
   | { type: "ADD_PAGE"; splitAt: number }
   // RES-21: replace the entire text state from a loaded entry. Used once
   // per mount when an existing draft for today is hydrated from IndexedDB.
-  | { type: "HYDRATE"; pages: Page[] };
+  | { type: "HYDRATE"; pages: Page[] }
+  // RES-23: clear all written content back to a single fresh page. Used
+  // after the JOURNAL_SLIDE animation lands the entry in the journal so a
+  // blank page stack greets the user on the desk again.
+  | { type: "RESET" };
 
 export const emptyPage = (): Page => ({ lines: [{ chars: [] }] });
 
@@ -130,6 +134,9 @@ export function textReducer(state: TextState, action: TextAction): TextState {
       if (action.pages.length === 0) return state;
       return { pages: action.pages, pageIndex: action.pages.length - 1 };
     }
+
+    case "RESET":
+      return initialTextState;
 
     case "ADD_PAGE": {
       const current = state.pages[state.pageIndex];
