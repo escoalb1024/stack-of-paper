@@ -8,7 +8,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
 import {
   LINE_HEIGHT_PX,
@@ -16,6 +16,7 @@ import {
   TEXT_FONT_SIZE,
   TEXT_LINE_HEIGHT,
 } from "./PageSurface";
+import { exportPdf, exportText } from "@/lib/export";
 import type { Entry } from "@/lib/storage";
 import type { Page } from "@/lib/text";
 
@@ -45,6 +46,179 @@ function formatShortDate(iso: string): string {
     day: "numeric",
     year: "numeric",
   });
+}
+
+// RES-29 — Per-entry export control. Icon button defaults to .md; the
+// adjacent caret opens a dropdown with .md / .txt / PDF options. Only one
+// dropdown is open at a time across the index — owner state lives on
+// JournalOpen and is passed in.
+function ExportControl({
+  entry,
+  open,
+  onOpen,
+  onClose,
+}: {
+  entry: Entry;
+  open: boolean;
+  onOpen: () => void;
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [busy, setBusy] = useState(false);
+
+  // Click-outside / Esc close the open dropdown without dismissing the
+  // surrounding journal overlay.
+  useEffect(() => {
+    if (!open) return;
+    const onDocDown = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) onClose();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        onClose();
+      }
+    };
+    document.addEventListener("mousedown", onDocDown);
+    document.addEventListener("keydown", onKey, true);
+    return () => {
+      document.removeEventListener("mousedown", onDocDown);
+      document.removeEventListener("keydown", onKey, true);
+    };
+  }, [open, onClose]);
+
+  const runExport = async (kind: "md" | "txt" | "pdf") => {
+    onClose();
+    if (kind === "pdf") {
+      setBusy(true);
+      try {
+        await exportPdf(entry);
+      } finally {
+        setBusy(false);
+      }
+    } else {
+      exportText(entry, kind);
+    }
+  };
+
+  const iconBtnBase = {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    height: 30,
+    background: "rgba(90,60,30,0.06)",
+    color: "#5a3c1e",
+    border: "1px solid rgba(90,60,30,0.18)",
+    cursor: busy ? "wait" : "pointer",
+    padding: 0,
+  } as const;
+
+  return (
+    <div
+      ref={ref}
+      style={{ position: "relative", display: "flex", alignItems: "center" }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <button
+        type="button"
+        aria-label={`Export ${entry.date} as Markdown`}
+        disabled={busy}
+        onClick={() => runExport("md")}
+        className="focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-800/30"
+        style={{
+          ...iconBtnBase,
+          width: 30,
+          borderTopLeftRadius: 4,
+          borderBottomLeftRadius: 4,
+          borderRight: "none",
+        }}
+      >
+        {/* Download glyph */}
+        <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden>
+          <path
+            fill="currentColor"
+            d="M7.25 1.75a.75.75 0 0 1 1.5 0v6.69l1.97-1.97a.75.75 0 1 1 1.06 1.06L8.53 10.78a.75.75 0 0 1-1.06 0L4.22 7.53a.75.75 0 1 1 1.06-1.06l1.97 1.97V1.75ZM2.75 12a.75.75 0 0 1 .75.75V13.5h9V12.75a.75.75 0 0 1 1.5 0v1.5a.75.75 0 0 1-.75.75h-10.5a.75.75 0 0 1-.75-.75v-1.5a.75.75 0 0 1 .75-.75Z"
+          />
+        </svg>
+      </button>
+      <button
+        type="button"
+        aria-label={`Export options for ${entry.date}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        disabled={busy}
+        onClick={() => (open ? onClose() : onOpen())}
+        className="focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-800/30"
+        style={{
+          ...iconBtnBase,
+          width: 22,
+          borderTopRightRadius: 4,
+          borderBottomRightRadius: 4,
+        }}
+      >
+        <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden>
+          <path fill="currentColor" d="M1 3.25 5 7.25l4-4Z" />
+        </svg>
+      </button>
+      {open && (
+        <ul
+          role="menu"
+          style={{
+            position: "absolute",
+            top: "100%",
+            right: 0,
+            marginTop: 4,
+            minWidth: 160,
+            background: "#fdf6e4",
+            border: "1px solid rgba(90,60,30,0.22)",
+            borderRadius: 4,
+            boxShadow: "0 8px 18px rgba(20,10,0,0.22)",
+            padding: "4px 0",
+            margin: 0,
+            listStyle: "none",
+            zIndex: 10,
+            fontFamily:
+              "ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif",
+            fontSize: 14,
+            color: "#3a2a18",
+          }}
+        >
+          {[
+            { kind: "md" as const, label: "Markdown (.md)" },
+            { kind: "txt" as const, label: "Plain text (.txt)" },
+            { kind: "pdf" as const, label: "PDF" },
+          ].map((opt) => (
+            <li key={opt.kind} role="none">
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => runExport(opt.kind)}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  textAlign: "left",
+                  padding: "8px 14px",
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  color: "inherit",
+                  font: "inherit",
+                }}
+                onMouseEnter={(e) =>
+                  (e.currentTarget.style.background = "rgba(90,60,30,0.08)")
+                }
+                onMouseLeave={(e) =>
+                  (e.currentTarget.style.background = "transparent")
+                }
+              >
+                {opt.label}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }
 
 // Renders the stored pages of an entry with the same char-level jitter +
@@ -105,6 +279,10 @@ export function JournalOpen({ entries, onClose }: JournalOpenProps) {
   const selected =
     entries.find((e) => e.id === pickedId) ?? entries[0] ?? null;
   const selectedId = selected?.id ?? null;
+
+  // RES-29: id of the entry whose export menu is open. Only one open at a
+  // time keeps the index visually quiet and the click-outside logic simple.
+  const [exportOpenId, setExportOpenId] = useState<string | null>(null);
 
   return (
     <motion.div
@@ -195,34 +373,53 @@ export function JournalOpen({ entries, onClose }: JournalOpenProps) {
               {entries.map((e) => {
                 const isSel = e.id === selectedId;
                 return (
-                  <li key={e.id}>
+                  <li
+                    key={e.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      marginBottom: 4,
+                      paddingRight: 4,
+                      background: isSel
+                        ? "rgba(90,60,30,0.1)"
+                        : "transparent",
+                      borderLeft: isSel
+                        ? "3px solid #5a3c1e"
+                        : "3px solid transparent",
+                      borderRadius: 2,
+                    }}
+                  >
                     <button
                       type="button"
                       onClick={() => setPickedId(e.id)}
                       className="focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-800/30"
                       style={{
+                        flex: 1,
                         display: "block",
-                        width: "100%",
                         textAlign: "left",
                         padding: "8px 14px",
-                        marginBottom: 4,
                         fontFamily: TEXT_FONT_FAMILY,
                         fontSize: 26,
                         color: isSel ? "#2a1f12" : "#5c4b36",
-                        background: isSel
-                          ? "rgba(90,60,30,0.1)"
-                          : "transparent",
+                        background: "transparent",
                         border: "none",
-                        borderLeft: isSel
-                          ? "3px solid #5a3c1e"
-                          : "3px solid transparent",
-                        borderRadius: 2,
                         cursor: "pointer",
                         lineHeight: 1.3,
                       }}
                     >
                       {formatEntryDate(e.id)}
                     </button>
+                    <ExportControl
+                      entry={e}
+                      open={exportOpenId === e.id}
+                      onOpen={() => setExportOpenId(e.id)}
+                      onClose={() =>
+                        setExportOpenId((curr) =>
+                          curr === e.id ? null : curr,
+                        )
+                      }
+                    />
                   </li>
                 );
               })}
