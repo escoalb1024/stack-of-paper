@@ -156,3 +156,22 @@ export function textReducer(state: TextState, action: TextAction): TextState {
 export function activePage(state: TextState): Page {
   return state.pages[state.pageIndex];
 }
+
+// RES-36: a one-line page used as a visible divider between same-day journal
+// additions. Rendered with the same handwriting font + jitter as written
+// content so it reads as part of the entry. The text shape is also what
+// `isSeparatorPage` matches against to count prior additions.
+const SEPARATOR_PREFIX = "----- entry ";
+const SEPARATOR_SUFFIX = " -----";
+
+export function makeSeparatorPage(entryNumber: number): Page {
+  const text = `${SEPARATOR_PREFIX}${entryNumber}${SEPARATOR_SUFFIX}`;
+  const chars = text.split("").map((c, i) => makeChar(c, i));
+  return { lines: [{ chars }] };
+}
+
+export function isSeparatorPage(page: Page): boolean {
+  if (page.lines.length !== 1) return false;
+  const text = page.lines[0].chars.map((c) => c.char).join("");
+  return text.startsWith(SEPARATOR_PREFIX) && text.endsWith(SEPARATOR_SUFFIX);
+}

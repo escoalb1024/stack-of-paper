@@ -17,13 +17,75 @@ import {
   TEXT_LINE_HEIGHT,
 } from "./PageSurface";
 import { exportPdf, exportText } from "@/lib/export";
-import type { Entry } from "@/lib/storage";
+import { deleteEntry, type Entry } from "@/lib/storage";
 import type { Page } from "@/lib/text";
 
 type JournalOpenProps = {
   entries: Entry[];
   onClose: () => void;
+  onDelete: (id: string) => void;
 };
+
+// RES-36 — Delete button. Mirrors the ExportControl primary-icon styling so
+// the two controls read as a pair. Confirms before destroying since the op
+// is irreversible (entry is removed from IndexedDB and the index list).
+function DeleteControl({
+  entry,
+  onDelete,
+}: {
+  entry: Entry;
+  onDelete: (id: string) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+
+  const onClick = async () => {
+    const ok = window.confirm(
+      `Delete the entry from ${entry.date}? This can't be undone.`,
+    );
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await deleteEntry(entry.id);
+      onDelete(entry.id);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      aria-label={`Delete entry from ${entry.date}`}
+      disabled={busy}
+      onClick={(e) => {
+        e.stopPropagation();
+        void onClick();
+      }}
+      className="focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-800/30"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: 30,
+        height: 30,
+        background: "rgba(90,60,30,0.06)",
+        color: "#5a3c1e",
+        border: "1px solid rgba(90,60,30,0.18)",
+        borderRadius: 4,
+        cursor: busy ? "wait" : "pointer",
+        padding: 0,
+      }}
+    >
+      {/* Trash glyph */}
+      <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden>
+        <path
+          fill="currentColor"
+          d="M6.5 1.75A.75.75 0 0 1 7.25 1h1.5a.75.75 0 0 1 .75.75V2.5h3.25a.75.75 0 0 1 0 1.5h-.6l-.7 9.13A1.75 1.75 0 0 1 9.71 14.75H6.29a1.75 1.75 0 0 1-1.74-1.62L3.85 4h-.6a.75.75 0 0 1 0-1.5H6.5V1.75ZM6.05 4l.69 9.02a.25.25 0 0 0 .25.23h3.42a.25.25 0 0 0 .25-.23L11.35 4H6.05Zm1.45 1.75a.5.5 0 0 1 .5.5v5a.5.5 0 0 1-1 0v-5a.5.5 0 0 1 .5-.5Zm2 0a.5.5 0 0 1 .5.5v5a.5.5 0 0 1-1 0v-5a.5.5 0 0 1 .5-.5Z"
+        />
+      </svg>
+    </button>
+  );
+}
 
 // Parse as local date (not UTC) to avoid off-by-one on dates near midnight.
 function parseISODate(iso: string): Date {
@@ -269,7 +331,7 @@ function EntryPages({ pages }: { pages: Page[] }) {
   );
 }
 
-export function JournalOpen({ entries, onClose }: JournalOpenProps) {
+export function JournalOpen({ entries, onClose, onDelete }: JournalOpenProps) {
   // User's explicit pick, or null when they haven't chosen. The effective
   // selection (below) falls back to the newest entry so the default view
   // shows something useful without needing a sync effect. Holding the raw
@@ -420,6 +482,7 @@ export function JournalOpen({ entries, onClose }: JournalOpenProps) {
                         )
                       }
                     />
+                    <DeleteControl entry={e} onDelete={onDelete} />
                   </li>
                 );
               })}

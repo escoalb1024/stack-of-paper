@@ -9,7 +9,7 @@
 // the same keying: promote yesterday's draft to journaled on load, enumerate
 // all keys for the journal index.
 
-import { get, keys, set } from "idb-keyval";
+import { del, get, keys, set } from "idb-keyval";
 import type { Page } from "./text.ts";
 
 export type EntryStatus = "draft" | "journaled";
@@ -54,6 +54,10 @@ export async function loadEntry(date: string): Promise<Entry | undefined> {
 
 export async function saveEntry(entry: Entry): Promise<void> {
   await set(entryKey(entry.id), entry);
+}
+
+export async function deleteEntry(date: string): Promise<void> {
+  await del(entryKey(date));
 }
 
 // Build an Entry for persistence from in-memory pages. `existing` lets the
