@@ -357,9 +357,17 @@ export default function Home() {
     if (textState.pageIndex < 3) return;
     milestoneShownRef.current = true;
     setToastVisible(true);
+  }, [mode, textState.pageIndex]);
+
+  // RES-28: auto-dismiss the toast 3s after it becomes visible. Kept in its
+  // own effect (keyed on `toastVisible`) so unrelated re-renders — e.g. a
+  // WRITING ↔ PAGE_TURN mode flip during the 3s window — don't clear the
+  // timer via the milestone effect's cleanup and leave the toast stuck on.
+  useEffect(() => {
+    if (!toastVisible) return;
     const handle = setTimeout(() => setToastVisible(false), 3000);
     return () => clearTimeout(handle);
-  }, [mode, textState.pageIndex]);
+  }, [toastVisible]);
 
   // RES-23: "Add to Journal" handler. Persists today's entry as journaled
   // before triggering the slide animation so the data is safe even if the
