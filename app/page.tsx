@@ -26,6 +26,7 @@ import {
   TEXT_LINE_HEIGHT,
 } from "@/components/PageSurface";
 import { PenHand } from "@/components/PenHand";
+import { Toast } from "@/components/Toast";
 import { measureLineWidth, pickWrapPoint } from "@/lib/measure";
 import {
   PAGE_ACTIVE_LEFT,
@@ -35,7 +36,13 @@ import {
   WRITING_WIDTH,
 } from "@/lib/scene";
 import { initialState, reducer } from "@/lib/state";
-import { activePage, initialTextState, textReducer } from "@/lib/text";
+import {
+  activePage,
+  initialTextState,
+  isSeparatorPage,
+  makeSeparatorPage,
+  textReducer,
+} from "@/lib/text";
 import {
   buildEntry,
   countJournaledEntries,
@@ -84,6 +91,14 @@ export default function Home() {
   // CLICK_PAGE_STACK from ZOOM_OUT) in the event handlers themselves, which
   // avoids a set-state-in-effect sync hook.
   const [viewingPageIndex, setViewingPageIndex] = useState(0);
+
+  // RES-28: toast visibility for the 3-page milestone. Fires once per entry
+  // when the user crosses to their 4th page (pageIndex reaches 3 — i.e. 3
+  // pages are done). milestoneShownRef guards against re-firing across
+  // re-renders, hydration of an already-deep entry, or PAGE_NAV/ZOOM_OUT
+  // round-trips. handleSlideComplete clears it so a new entry can re-arm.
+  const [toastVisible, setToastVisible] = useState(false);
+  const milestoneShownRef = useRef(false);
 
   // RES-24: count of journaled entries, drives the closed-journal thickness.
   // Loaded on mount alongside the stale-draft promotion so it reflects any
@@ -287,7 +302,13 @@ export default function Home() {
       if (cancelled) return;
       if (existing && existing.pages.length > 0) {
         existingEntryRef.current = existing;
-        textDispatch({ type: "HYDRATE", pages: existing.pages });
+        // RES-36: when today's entry has already been journaled, leave the
+        // desk fresh so the user can write a "second session" rather than
+        // re-rendering the journaled content as a draft. The ref is still
+        // preserved so handleAddToJournal can append to it.
+        if (existing.status !== "journaled") {
+          textDispatch({ type: "HYDRATE", pages: existing.pages });
+        }
       }
       // RES-24: count after promotion so yesterday's just-promoted drafts are
       // reflected in the journal thickness on first paint.
@@ -324,6 +345,30 @@ export default function Home() {
     return () => clearTimeout(handle);
   }, [hydrated, textState.pages]);
 
+  // RES-28: trigger the 3-page toast when the active page index first reaches
+  // 3 — i.e. immediately after the third page-turn lands the user on page 4.
+  // Gated to WRITING/PAGE_TURN so HYDRATE (which runs during DESK_IDLE before
+  // the user resumes) of a deep draft doesn't re-fire the milestone, and so
+  // arrow-keying through pages in ZOOM_OUT/PAGE_NAV review doesn't trigger it.
+  // The ref ensures one toast per entry; handleSlideComplete clears it.
+  useEffect(() => {
+    if (milestoneShownRef.current) return;
+    if (mode !== "WRITING" && mode !== "PAGE_TURN") return;
+    if (textState.pageIndex < 3) return;
+    milestoneShownRef.current = true;
+    setToastVisible(true);
+  }, [mode, textState.pageIndex]);
+
+  // RES-28: auto-dismiss the toast 3s after it becomes visible. Kept in its
+  // own effect (keyed on `toastVisible`) so unrelated re-renders — e.g. a
+  // WRITING ↔ PAGE_TURN mode flip during the 3s window — don't clear the
+  // timer via the milestone effect's cleanup and leave the toast stuck on.
+  useEffect(() => {
+    if (!toastVisible) return;
+    const handle = setTimeout(() => setToastVisible(false), 3000);
+    return () => clearTimeout(handle);
+  }, [toastVisible]);
+
   // RES-23: "Add to Journal" handler. Persists today's entry as journaled
   // before triggering the slide animation so the data is safe even if the
   // user navigates away mid-animation. Empty page stacks are no-ops on the
@@ -334,11 +379,23 @@ export default function Home() {
     );
     dispatch({ type: "CLICK_ADD_TO_JOURNAL" });
     if (hasContent) {
-      const base = buildEntry(
-        dateRef.current,
-        textState.pages,
-        existingEntryRef.current,
-      );
+      const existing = existingEntryRef.current;
+      // RES-36: if today's entry is already journaled, append the new pages
+      // to the previously-journaled ones (with a visible "entry N" separator
+      // page) instead of overwriting. The separator number is derived from
+      // existing separators in the stored pages so the count stays correct
+      // across multiple same-day additions.
+      let pages = textState.pages;
+      if (existing?.status === "journaled") {
+        const additions = existing.pages.filter(isSeparatorPage).length;
+        const entryNumber = additions + 2;
+        pages = [
+          ...existing.pages,
+          makeSeparatorPage(entryNumber),
+          ...textState.pages,
+        ];
+      }
+      const base = buildEntry(dateRef.current, pages, existing);
       const journaled = { ...base, status: "journaled" as const };
       await saveEntry(journaled);
       existingEntryRef.current = journaled;
@@ -353,6 +410,9 @@ export default function Home() {
   const handleSlideComplete = async () => {
     textDispatch({ type: "RESET" });
     setViewingPageIndex(0);
+    // RES-28: re-arm the 3-page milestone for the next entry.
+    milestoneShownRef.current = false;
+    setToastVisible(false);
     dispatch({ type: "JOURNAL_SLIDE_COMPLETE" });
     const count = await countJournaledEntries();
     setJournaledCount(count);
@@ -364,6 +424,7 @@ export default function Home() {
         state={mode}
         penX={cursorPos.x}
         penY={cursorPos.y}
+        keystrokeCount={keystrokeCount}
         onZoomInComplete={() => dispatch({ type: "ZOOM_IN_COMPLETE" })}
         onZoomOutComplete={() => dispatch({ type: "ZOOM_OUT_COMPLETE" })}
       >
@@ -480,6 +541,8 @@ export default function Home() {
         }}
       />
 
+      <Toast visible={toastVisible} message="3 pages done ✓" />
+
       <PageCountIndicator
         current={displayedPageIndex + 1}
         total={textState.pages.length}
@@ -497,6 +560,10 @@ export default function Home() {
           onClose={() =>
             dispatch({ type: "CLOSE_JOURNAL", returnTo: journalReturnRef.current })
           }
+          onDelete={(id) => {
+            setJournalEntries((curr) => curr.filter((e) => e.id !== id));
+            void countJournaledEntries().then(setJournaledCount);
+          }}
         />
       )}
 

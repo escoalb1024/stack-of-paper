@@ -10,7 +10,9 @@
     "test": "node --test --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON 'lib/**/*.test.ts'"
   },
   "dependencies": {
+    "html2canvas": "^1.4.1",
     "idb-keyval": "^6.2.2",
+    "jspdf": "^4.2.1",
     "motion": "^12.38.0",
     "next": "16.2.3",
     "react": "19.2.4",
