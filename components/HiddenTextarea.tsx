@@ -33,6 +33,21 @@ export function HiddenTextarea({
     else el.blur();
   }, [active]);
 
+  // Tab/app switches blur the textarea even though we're still in WRITING.
+  // Re-focus when the window regains focus or becomes visible again.
+  useEffect(() => {
+    if (!active) return;
+    const refocus = () => {
+      if (document.visibilityState === "visible") ref.current?.focus();
+    };
+    window.addEventListener("focus", refocus);
+    document.addEventListener("visibilitychange", refocus);
+    return () => {
+      window.removeEventListener("focus", refocus);
+      document.removeEventListener("visibilitychange", refocus);
+    };
+  }, [active]);
+
   return (
     <textarea
       ref={ref}
