@@ -10,6 +10,7 @@ import { CSSProperties, RefObject } from "react";
 import {
   PAGE_ACTIVE_LEFT,
   PAGE_ACTIVE_TOP,
+  RENDER_SCALE,
   WRITING_HEIGHT,
   WRITING_MARGIN_X,
   WRITING_MARGIN_Y,
@@ -31,7 +32,10 @@ const CHAR_SPAN: CSSProperties = {
 // RES-15 soft-wrap measurer (lib/measure.ts reproduces these exactly).
 // Sized so that when the camera zooms 3.5×, ~4–5 lines and ~8–10 words are
 // visible (per the RES-9 visible-area spec).
-export const TEXT_FONT_SIZE = 26;
+// RES-38 — TEXT_FONT_SIZE is in desk-space (render-space) px and includes
+// the RENDER_SCALE multiplier so text rasterizes at native size during
+// WRITING. Out-of-camera consumers (JournalOpen) divide by RENDER_SCALE.
+export const TEXT_FONT_SIZE = 26 * RENDER_SCALE;
 export const TEXT_LINE_HEIGHT = 1.85;
 export const TEXT_FONT_FAMILY = "var(--font-caveat), Caveat, 'Kalam', cursive";
 export const LINE_HEIGHT_PX = Math.round(TEXT_FONT_SIZE * TEXT_LINE_HEIGHT);
@@ -87,7 +91,11 @@ export function PageSurface({
               key={ci}
               style={{
                 ...CHAR_SPAN,
-                transform: `translate(${c.offsetX}px, ${c.offsetY}px) rotate(${c.rotation}deg)`,
+                // RES-38 \u2014 jitter offsets in CharData are stored in base px
+                // (\u00b10.5 / \u00b11). Multiply at render time so they stay
+                // proportional to the render-space font size. Rotation is
+                // in degrees and doesn't scale.
+                transform: `translate(${c.offsetX * RENDER_SCALE}px, ${c.offsetY * RENDER_SCALE}px) rotate(${c.rotation}deg)`,
               }}
             >
               {/* Preserve spaces: inline-block spans collapse literal " ". */}

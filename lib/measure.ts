@@ -17,7 +17,8 @@
 // A guard still early-returns 0 if document is missing so unit tests (or a
 // hypothetical SSR invocation) don't crash.
 
-import type { CharData } from "@/lib/text";
+import { RENDER_SCALE } from "./scene.ts";
+import type { CharData } from "./text.ts";
 
 export interface MeasureOpts {
   fontFamily: string;
@@ -83,8 +84,11 @@ export function measureLineWidth(
   // Per-character jitter translates don't affect offsetWidth. The only
   // component that can push the visible ink past the right margin is a
   // positive offsetX on the trailing character, so add that as a boost.
+  // RES-38 — PageSurface renders the stored base-px jitter offset at
+  // ×RENDER_SCALE so it stays visually proportional to the render-space
+  // font; mirror that here so the measurement matches what's drawn.
   const lastOffsetX = chars[chars.length - 1].offsetX;
-  const rightEdgeBoost = lastOffsetX > 0 ? lastOffsetX : 0;
+  const rightEdgeBoost = lastOffsetX > 0 ? lastOffsetX * RENDER_SCALE : 0;
 
   return el.offsetWidth + rightEdgeBoost;
 }

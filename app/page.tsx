@@ -68,6 +68,16 @@ export default function Home() {
   const [mode, dispatch] = useReducer(reducer, initialState);
   const [textState, textDispatch] = useReducer(textReducer, initialTextState);
 
+  // RES-38 — Gate CameraContainer rendering until after first client paint.
+  // SSR + initial hydration render the page without the camera/scene, so
+  // there's no SSR transform to mismatch and no fallback paint to flash.
+  // Once this flips true, CameraContainer mounts on the client and reads
+  // the real `window.innerWidth/Height` directly into its initial state,
+  // so its first paint is already at the correct size — no boot animation,
+  // no resize-into-place.
+  const [cameraMounted, setCameraMounted] = useState(false);
+  useEffect(() => setCameraMounted(true), []);
+
   // RES-21: once a draft has been hydrated (or confirmed absent) we can
   // start autosaving. Gating avoids the first-render save clobbering a
   // saved entry before the HYDRATE dispatch lands.
@@ -418,8 +428,35 @@ export default function Home() {
     setJournaledCount(count);
   };
 
+  // RES-38 — Hide the entire scene while the journal is open. The desk's
+  // willChange:transform layer (which spans the whole render-space canvas)
+  // otherwise stays resident on the GPU, fighting JournalOpen for texture
+  // memory and stuttering its open/scroll animations. display:none preserves
+  // React state but lets the browser drop the layer until we return.
+  const sceneHidden = mode === "JOURNAL_OPEN";
+
   return (
-    <main className="relative h-screen w-screen overflow-clip bg-[#2a2621]">
+    <main
+      className="relative h-screen w-screen overflow-clip"
+      // RES-38 — desk gradient lives here (viewport-sized, single
+      // compositor tile) instead of on the in-camera Desk div. At
+      // RENDER_SCALE × ZOOM_SCALE the camera's layer texture exceeds
+      // Chrome's per-tile limit and the radial gradient inside it
+      // shows a visible seam where tiles meet. Rendering the gradient
+      // on the viewport background avoids that — and because the desk
+      // is always centered on the viewport via the camera's cover-fit,
+      // a radial centered at 50%/55% of the viewport matches what a
+      // desk-space radial would have looked like at any zoom state.
+      // #2a2621 (the previous solid bg) stayed under the gradient as a
+      // fallback for the edges; with the gradient covering full viewport
+      // it's no longer needed.
+      style={{
+        background:
+          "radial-gradient(ellipse at 50% 55%, #88806f 0%, #6f6656 55%, #544b3d 100%)",
+      }}
+    >
+      {cameraMounted && (
+      <div style={sceneHidden ? { display: "none" } : undefined}>
       <CameraContainer
         state={mode}
         penX={cursorPos.x}
@@ -524,6 +561,8 @@ export default function Home() {
           />
         </Desk>
       </CameraContainer>
+      </div>
+      )}
 
       <HiddenTextarea
         active={mode === "WRITING"}

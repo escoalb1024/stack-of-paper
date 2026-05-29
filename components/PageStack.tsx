@@ -18,6 +18,7 @@ import {
   PAGE_ACTIVE_TOP,
   PAGE_HEIGHT,
   PAGE_WIDTH,
+  rs,
 } from "@/lib/scene";
 
 /**
@@ -41,9 +42,10 @@ export function doneSlotOffset(i: number): {
   rotate: number;
 } {
   const clamped = Math.min(i, MAX_DONE_VISIBLE - 1);
+  // RES-38 — offsets are in render-space px; rotate is degrees (unchanged).
   return {
-    offsetX: -5 - clamped * 0.6,
-    offsetY: 4 + clamped * 0.9,
+    offsetX: rs(-5 - clamped * 0.6),
+    offsetY: rs(4 + clamped * 0.9),
     rotate: clamped % 2 === 0 ? -0.9 : 0.7,
   };
 }
@@ -101,9 +103,9 @@ function Page({ offsetX, offsetY, rotate, zIndex, active, onClick }: PageProps) 
         // Soft cream paper; very subtle drop shadow so the stack reads as a
         // pile without looking heavy.
         background: "#fbf7ef",
-        boxShadow:
-          "0 1px 1px rgba(0,0,0,0.08), 0 6px 14px rgba(0,0,0,0.12), 0 18px 36px rgba(0,0,0,0.10)",
-        borderRadius: 2,
+        // RES-38 — shadow offsets/blur scaled with the scene.
+        boxShadow: `0 ${rs(1)}px ${rs(1)}px rgba(0,0,0,0.08), 0 ${rs(6)}px ${rs(14)}px rgba(0,0,0,0.12), 0 ${rs(18)}px ${rs(36)}px rgba(0,0,0,0.10)`,
+        borderRadius: rs(2),
       }}
     />
   );
@@ -142,8 +144,8 @@ export function PageStack({
       ))}
       {/* Back pages offset 1–2px each behind the active page, with tiny
           rotations for an organic pile feel. */}
-      <Page offsetX={-2} offsetY={2} rotate={-0.6} zIndex={1} />
-      <Page offsetX={1} offsetY={1} rotate={0.4} zIndex={2} />
+      <Page offsetX={rs(-2)} offsetY={rs(2)} rotate={-0.6} zIndex={1} />
+      <Page offsetX={rs(1)} offsetY={rs(1)} rotate={0.4} zIndex={2} />
       {showActive && (
         <Page offsetX={0} offsetY={0} rotate={0} zIndex={3} active onClick={onClick} />
       )}

@@ -17,8 +17,18 @@ import {
   TEXT_LINE_HEIGHT,
 } from "./PageSurface";
 import { exportPdf, exportText } from "@/lib/export";
+import { RENDER_SCALE } from "@/lib/scene";
 import { deleteEntry, type Entry } from "@/lib/storage";
 import type { Page } from "@/lib/text";
+
+// RES-38 — JournalOpen is a fullscreen overlay rendered OUTSIDE the camera
+// transform, so it sees viewport pixels directly. PageSurface's exported
+// metrics are in render-space px (×RENDER_SCALE) for the in-camera writing
+// surface; divide here to get the visual values the journal page wants.
+// Char-level jitter offsets in CharData stay in base px (±0.5 / ±1) and need
+// no adjustment — they're already at viewport scale.
+const JOURNAL_FONT_SIZE = TEXT_FONT_SIZE / RENDER_SCALE;
+const JOURNAL_LINE_HEIGHT_PX = LINE_HEIGHT_PX / RENDER_SCALE;
 
 type JournalOpenProps = {
   entries: Entry[];
@@ -291,7 +301,7 @@ function EntryPages({ pages }: { pages: Page[] }) {
     <div
       style={{
         fontFamily: TEXT_FONT_FAMILY,
-        fontSize: TEXT_FONT_SIZE,
+        fontSize: JOURNAL_FONT_SIZE,
         lineHeight: TEXT_LINE_HEIGHT,
         color: "#1b1712",
       }}
@@ -301,7 +311,7 @@ function EntryPages({ pages }: { pages: Page[] }) {
           {page.lines.map((line, li) => (
             <div
               key={li}
-              style={{ minHeight: LINE_HEIGHT_PX, whiteSpace: "nowrap" }}
+              style={{ minHeight: JOURNAL_LINE_HEIGHT_PX, whiteSpace: "nowrap" }}
             >
               {line.chars.map((c, ci) => (
                 <span
@@ -345,6 +355,20 @@ export function JournalOpen({ entries, onClose, onDelete }: JournalOpenProps) {
   // RES-29: id of the entry whose export menu is open. Only one open at a
   // time keeps the index visually quiet and the click-outside logic simple.
   const [exportOpenId, setExportOpenId] = useState<string | null>(null);
+
+  // RES-38 — Defer the heavy panel contents (entries list + the selected
+  // entry's per-character text rendering) until after JournalOpen's first
+  // paint. Mounting all that DOM on the same React commit as the open
+  // animation starts causes the spring/opacity tweens to skip their first
+  // few frames — perceived as a chunky open. Holding it back by one paint
+  // cycle lets the chrome (book silhouette + close button) animate in
+  // cleanly; the content then mounts inside the existing inner-motion
+  // opacity fade so it appears smoothly without a visible "pop".
+  const [contentReady, setContentReady] = useState(false);
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setContentReady(true));
+    return () => cancelAnimationFrame(raf);
+  }, []);
 
   return (
     <motion.div
@@ -397,8 +421,16 @@ export function JournalOpen({ entries, onClose, onDelete }: JournalOpenProps) {
           display: "flex",
           width: "min(1200px, 92vw)",
           height: "min(760px, 86vh)",
-          filter:
-            "drop-shadow(0 8px 16px rgba(0,0,0,0.4)) drop-shadow(0 30px 60px rgba(0,0,0,0.32))",
+          // RES-38 — box-shadow (composited) instead of filter:drop-shadow
+          // (re-rasterized per frame). The scale spring on a drop-shadowed
+          // 1200×760 panel was forcing the browser to re-blur both shadows
+          // every animation frame, which is the main cost behind the
+          // jankly open transition. Box-shadow follows the rounded
+          // rectangle of the book silhouette and the GPU just scales the
+          // composited layer.
+          borderRadius: 6,
+          boxShadow:
+            "0 8px 16px rgba(0,0,0,0.4), 0 30px 60px rgba(0,0,0,0.32)",
         }}
       >
         {/* Left page — index */}
@@ -426,7 +458,7 @@ export function JournalOpen({ entries, onClose, onDelete }: JournalOpenProps) {
           >
             Journal
           </h1>
-          {entries.length === 0 ? (
+          {!contentReady ? null : entries.length === 0 ? (
             <p style={{ color: "#7a6851", fontSize: 24 }}>
               No entries yet — finish a morning and add it to the journal.
             </p>
@@ -513,7 +545,7 @@ export function JournalOpen({ entries, onClose, onDelete }: JournalOpenProps) {
             overflowY: "auto",
           }}
         >
-          {selected ? (
+          {!contentReady ? null : selected ? (
             // Keying on the entry id remounts the content so the fade-in
             // replays when switching entries. Simple cross-fade per the v1
             // spec (book-flip transition is v2).

@@ -24,16 +24,17 @@
 
 import { useEffect, useRef } from "react";
 import { motion, useAnimate } from "motion/react";
+import { rs } from "@/lib/scene";
 
 // The SVG viewBox is 0 0 787 681. The pen nib (small gray square) sits at
 // approximately (11, 459) in SVG space. We scale the SVG down so it looks
-// natural next to 26px desk-space text at 3.5x zoom.
+// natural next to the rendered text.
 const SVG_WIDTH = 787;
 const SVG_HEIGHT = 681;
 
-// Desk-space width for the rendered hand. At 3.5x zoom this becomes ~525
-// viewport pixels — a comfortable hand size next to ~91px rendered text.
-const HAND_WIDTH = 150;
+// RES-38 — render-space width for the rendered hand. Reads as ~150 viewport
+// px at desk view, the same proportion against the rendered text as before.
+const HAND_WIDTH = rs(150);
 const SCALE = HAND_WIDTH / SVG_WIDTH;
 const HAND_HEIGHT = Math.round(SVG_HEIGHT * SCALE);
 
@@ -98,9 +99,10 @@ export function PenHand({
 
     // Random direction each keystroke for organic feel.
     // Range spans a full character cell but values are halved for subtlety.
+    // RES-38 — dx/dy are render-space px; angle stays in degrees.
     const angle = (Math.random() - 0.5) * 5;  // ±2.5°
-    const dx = (Math.random() - 0.5) * 10;    // ±5px (~char width)
-    const dy = (Math.random() - 0.5) * 16;    // ±8px (~char height)
+    const dx = (Math.random() - 0.5) * rs(10); // ±5px (~char width)
+    const dy = (Math.random() - 0.5) * rs(16); // ±8px (~char height)
 
     jitterAnimate(
       jitterScope.current,
@@ -117,9 +119,10 @@ export function PenHand({
     // left+down, then drop. Asymmetric keyframe times (fast rise, held
     // peak, softer drop) make the arc read as a real lift rather than a
     // symmetric bounce — noticeably bigger than the per-keystroke jitter.
+    // RES-38 — lift y in render-space px; rotation stays in degrees.
     liftAnimate(
       liftScope.current,
-      { y: [0, -28, -24, 0], rotate: [0, -10, -8, 0] },
+      { y: [0, rs(-28), rs(-24), 0], rotate: [0, -10, -8, 0] },
       { duration: 0.28, times: [0, 0.25, 0.6, 1], ease: "easeOut" },
     );
   }, [lineBreakCount, liftAnimate, liftScope]);
@@ -132,9 +135,10 @@ export function PenHand({
       // outgoing page and settle onto the incoming one. Matches the ~700ms
       // paper animation in PageTurnAnimation so the landing reads as one
       // motion.
+      // RES-38 — lift y in render-space px; rotation stays in degrees.
       turnAnimate(
         turnScope.current,
-        { y: [0, -54, -44, 0], rotate: [0, -15, -12, 0] },
+        { y: [0, rs(-54), rs(-44), 0], rotate: [0, -15, -12, 0] },
         { duration: 1.2, times: [0, 0.35, 0.7, 1], ease: [0.3, 0, 0.2, 1] },
       );
     }

@@ -24,7 +24,7 @@
 "use client";
 
 import { motion } from "motion/react";
-import { PAGE_HEIGHT } from "@/lib/scene";
+import { PAGE_HEIGHT, rs } from "@/lib/scene";
 import { Page } from "@/lib/text";
 import { PageSurface } from "./PageSurface";
 import {
@@ -42,7 +42,7 @@ const PAGE_NAV_DURATION = 0.7;
 
 // Off-desk resting spot for the moving paper. Matches the page-turn's
 // below-desk start/end so both animations share the same "below" position.
-const BELOW_Y = PAGE_HEIGHT + 60;
+const BELOW_Y = PAGE_HEIGHT + rs(60);
 
 // Motion curves. Forward uses a long decelerate so the rising incoming
 // page settles into the slot. Backward uses a gentle ease so the outgoing

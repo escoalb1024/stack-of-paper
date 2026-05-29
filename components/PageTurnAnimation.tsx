@@ -43,6 +43,7 @@ import {
   PAGE_ACTIVE_TOP,
   PAGE_HEIGHT,
   PAGE_WIDTH,
+  rs,
 } from "@/lib/scene";
 import { getSlowMultiplier } from "@/lib/debug";
 import { Page } from "@/lib/text";
@@ -55,9 +56,9 @@ export const PAPER_STYLE = {
   width: PAGE_WIDTH,
   height: PAGE_HEIGHT,
   background: "#fbf7ef",
-  boxShadow:
-    "0 1px 1px rgba(0,0,0,0.08), 0 6px 14px rgba(0,0,0,0.12), 0 18px 36px rgba(0,0,0,0.10)",
-  borderRadius: 2,
+  // RES-38 — shadow offsets/blur scaled with the scene.
+  boxShadow: `0 ${rs(1)}px ${rs(1)}px rgba(0,0,0,0.08), 0 ${rs(6)}px ${rs(14)}px rgba(0,0,0,0.12), 0 ${rs(18)}px ${rs(36)}px rgba(0,0,0,0.10)`,
+  borderRadius: rs(2),
 };
 
 export const OVERLAY_STYLE = {
@@ -122,7 +123,7 @@ export function PageTurnAnimation({
       <motion.div
         aria-hidden
         style={{ ...OVERLAY_STYLE, transformOrigin: TRANSFORM_ORIGIN, zIndex: 6 }}
-        initial={{ x: 0, y: PAGE_HEIGHT + 60, rotate: 0 }}
+        initial={{ x: 0, y: PAGE_HEIGHT + rs(60), rotate: 0 }}
         animate={{ x: 0, y: 0, rotate: 0 }}
         transition={{ duration, ease: [0.2, 0.7, 0.2, 1] }}
         onAnimationComplete={onComplete}

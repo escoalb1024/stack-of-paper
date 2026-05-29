@@ -14,14 +14,15 @@ import {
   PAGE_ACTIVE_TOP,
   PAGE_HEIGHT,
   PAGE_WIDTH,
+  rs,
 } from "@/lib/scene";
 
-const BUTTON_LEFT = PAGE_ACTIVE_LEFT + PAGE_WIDTH + 80;
+const BUTTON_LEFT = PAGE_ACTIVE_LEFT + PAGE_WIDTH + rs(80);
 // Sit beside the top of the page rather than near its bottom — at typical
 // viewport sizes the desk is centered with its lower half clipped, so a
 // bottom-aligned button ends up off-screen. Top-aligned keeps it well
 // inside the visible area in ZOOM_OUT.
-const BUTTON_TOP = PAGE_ACTIVE_TOP + 80;
+const BUTTON_TOP = PAGE_ACTIVE_TOP + rs(80);
 
 type AddToJournalButtonProps = {
   visible: boolean;
@@ -37,11 +38,11 @@ export function AddToJournalButton({
       type="button"
       aria-label="Add to journal"
       initial={false}
-      animate={{ opacity: visible ? 1 : 0, y: visible ? 0 : 8 }}
+      animate={{ opacity: visible ? 1 : 0, y: visible ? 0 : rs(8) }}
       transition={{ duration: 0.35, ease: "easeOut" }}
       whileHover={
         visible
-          ? { y: -2, transition: { type: "spring", stiffness: 300, damping: 20 } }
+          ? { y: rs(-2), transition: { type: "spring", stiffness: 300, damping: 20 } }
           : undefined
       }
       whileTap={visible ? { scale: 0.97 } : undefined}
@@ -56,13 +57,13 @@ export function AddToJournalButton({
           "linear-gradient(180deg, #f8efd6 0%, #f1e4be 100%)",
         color: "#3a2516",
         fontFamily: "var(--font-caveat), Caveat, cursive",
-        fontSize: 30,
+        // RES-38 — font/padding/radius/border/shadow scaled with the scene.
+        fontSize: rs(30),
         lineHeight: 1,
-        padding: "14px 26px",
-        borderRadius: 4,
-        border: "1px solid rgba(70,45,20,0.3)",
-        boxShadow:
-          "0 1px 0 rgba(255,255,255,0.6) inset, 0 4px 10px rgba(0,0,0,0.18), 0 14px 28px rgba(0,0,0,0.16)",
+        padding: `${rs(14)}px ${rs(26)}px`,
+        borderRadius: rs(4),
+        border: `${rs(1)}px solid rgba(70,45,20,0.3)`,
+        boxShadow: `0 ${rs(1)}px 0 rgba(255,255,255,0.6) inset, 0 ${rs(4)}px ${rs(10)}px rgba(0,0,0,0.18), 0 ${rs(14)}px ${rs(28)}px rgba(0,0,0,0.16)`,
         cursor: visible ? "pointer" : "default",
         whiteSpace: "nowrap",
         zIndex: 30,
