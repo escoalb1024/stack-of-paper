@@ -53,8 +53,8 @@ const SPRING = { type: "spring" as const, stiffness: 70, damping: 18, mass: 1 };
 // same physical material, just stiffer.
 const TRANSITION_SPRING = {
   type: "spring" as const,
-  stiffness: 180,
-  damping: 27,
+  stiffness: 90,
+  damping: 19,
   mass: 1,
 };
 

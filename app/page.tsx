@@ -545,7 +545,7 @@ export default function Home() {
           <PenHand
             cursorX={cursorPos.x}
             cursorY={cursorPos.y}
-            visible={mode === "WRITING" || mode === "PAGE_TURN"}
+            visible={mode === "ZOOM_IN" || mode === "WRITING" || mode === "PAGE_TURN"}
             keystrokeCount={keystrokeCount}
             lineBreakCount={lineBreakCount}
             pageTurning={mode === "PAGE_TURN"}
@@ -565,7 +565,7 @@ export default function Home() {
       )}
 
       <HiddenTextarea
-        active={mode === "WRITING"}
+        active={mode === "ZOOM_IN" || mode === "WRITING"}
         onChar={(ch) => {
           textDispatch({ type: "APPEND_CHAR", char: ch });
           setKeystrokeCount((c) => c + 1);
