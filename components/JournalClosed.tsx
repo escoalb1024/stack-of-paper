@@ -14,19 +14,21 @@
 
 import { useState } from "react";
 import { motion } from "motion/react";
+import { rs } from "@/lib/scene";
 
 // Desk-space placement (top-left corner area). Kept well inside the desk
 // bounds so the camera can pan toward it without clipping into the frame.
 // Placed so the spine-corner bleeds off the top-left of the desk — reads as a
 // journal sitting at the edge of the work surface, not neatly centered on it.
-export const JOURNAL_LEFT = 20;
-export const JOURNAL_TOP = -80;
+// RES-38 — values are in render-space px (rs() wraps base values).
+export const JOURNAL_LEFT = rs(20);
+export const JOURNAL_TOP = rs(-80);
 
 // Sized to match a single page (PAGE_WIDTH × PAGE_HEIGHT from lib/scene) so
 // the journal reads as the same scale as the paper on the desk. Exported so
 // the RES-23 slide animation can land its papers on the same footprint.
-export const JOURNAL_BOOK_WIDTH = 520;
-export const JOURNAL_BOOK_HEIGHT = 673;
+export const JOURNAL_BOOK_WIDTH = rs(520);
+export const JOURNAL_BOOK_HEIGHT = rs(673);
 const BOOK_WIDTH = JOURNAL_BOOK_WIDTH;
 const BOOK_HEIGHT = JOURNAL_BOOK_HEIGHT;
 // Clockwise tilt so the spine faces up-left and the fore-edge faces down-right.
@@ -37,7 +39,7 @@ const BOOK_ROTATION_DEG = JOURNAL_ROTATION_DEG;
 // to this cap. Beyond it the book's "fullness" plateaus — matches PageStack's
 // MAX_DONE_VISIBLE philosophy.
 const MAX_PAGE_SLICES = 24;
-const SLICE_THICKNESS = 0.8;
+const SLICE_THICKNESS = rs(0.8);
 
 // Hover affordance: on hover/focus a few pages slide out from the book's
 // top-right corner, as if being tugged by the corner. Each page uses a
@@ -51,18 +53,19 @@ type PageTransform = { x: number; y: number; rotate: number };
 // Subtle asymmetry even at rest — each page sits a hair off-square inside
 // the book so the pile feels hand-stacked. These baselines are added into
 // both rest and hover targets below.
+// RES-38 — x/y are render-space px; rotate stays in degrees.
 const PAGE_REST_OFFSETS: readonly PageTransform[] = [
   { x: 0, y: 0, rotate: 0.6 },
-  { x: -1, y: 1, rotate: -0.4 },
-  { x: 2, y: -1, rotate: 0.2 },
+  { x: rs(-1), y: rs(1), rotate: -0.4 },
+  { x: rs(2), y: rs(-1), rotate: 0.2 },
 ] as const;
 
 // Per-page pull-out direction — differing x/y ratios (not proportional) and
 // mixed rotation signs so the sheets don't move in lockstep.
 const PAGE_HOVER_DELTAS: readonly PageTransform[] = [
-  { x: 44, y: -22, rotate: 5.2 },
-  { x: 22, y: -30, rotate: -1.8 },
-  { x: 32, y: -10, rotate: 2.6 },
+  { x: rs(44), y: rs(-22), rotate: 5.2 },
+  { x: rs(22), y: rs(-30), rotate: -1.8 },
+  { x: rs(32), y: rs(-10), rotate: 2.6 },
 ] as const;
 
 function addTransforms(a: PageTransform, b: PageTransform): PageTransform {
@@ -121,8 +124,8 @@ export function JournalClosed({
         cursor: interactive ? "pointer" : "default",
         transform: `rotate(${BOOK_ROTATION_DEG}deg)`,
         transformOrigin: "50% 50%",
-        filter:
-          "drop-shadow(0 4px 6px rgba(0,0,0,0.25)) drop-shadow(0 14px 28px rgba(0,0,0,0.28))",
+        // RES-38 — drop-shadow offsets/blur in render-space px.
+        filter: `drop-shadow(0 ${rs(4)}px ${rs(6)}px rgba(0,0,0,0.25)) drop-shadow(0 ${rs(14)}px ${rs(28)}px rgba(0,0,0,0.28))`,
       }}
       // Using CSS focus ring via outline — focus visible in keyboard nav
       // without overriding the leather styling.
@@ -138,15 +141,16 @@ export function JournalClosed({
         aria-hidden
         style={{
           position: "absolute",
-          top: 6,
+          top: rs(6),
           right: 0,
-          width: Math.max(6, fullnessPx + 4),
-          height: BOOK_HEIGHT - 12,
-          background:
-            "repeating-linear-gradient(to right, #f3ead4 0px, #f3ead4 1px, #d8ccac 1px, #d8ccac 2px)",
-          borderTopRightRadius: 2,
-          borderBottomRightRadius: 2,
-          boxShadow: "inset 0 0 3px rgba(80,60,30,0.3)",
+          width: Math.max(rs(6), fullnessPx + rs(4)),
+          height: BOOK_HEIGHT - rs(12),
+          // RES-38 — page-edge stripe pattern scaled with the scene so the
+          // ribbing stays visible at desk view's 1/RENDER_SCALE downscale.
+          background: `repeating-linear-gradient(to right, #f3ead4 0px, #f3ead4 ${rs(1)}px, #d8ccac ${rs(1)}px, #d8ccac ${rs(2)}px)`,
+          borderTopRightRadius: rs(2),
+          borderBottomRightRadius: rs(2),
+          boxShadow: `inset 0 0 ${rs(3)}px rgba(80,60,30,0.3)`,
         }}
       />
 
@@ -156,7 +160,7 @@ export function JournalClosed({
         style={{
           position: "absolute",
           inset: 0,
-          borderRadius: 4,
+          borderRadius: rs(4),
           background:
             "linear-gradient(90deg, #3a2516 0%, #2e1c10 45%, #241509 100%)",
         }}
@@ -189,14 +193,13 @@ export function JournalClosed({
             }}
             style={{
               position: "absolute",
-              top: 8,
-              left: 10,
-              width: BOOK_WIDTH - 20,
-              height: BOOK_HEIGHT - 16,
+              top: rs(8),
+              left: rs(10),
+              width: BOOK_WIDTH - rs(20),
+              height: BOOK_HEIGHT - rs(16),
               background: "#fbf7ef",
-              borderRadius: 2,
-              boxShadow:
-                "0 1px 1px rgba(0,0,0,0.12), 0 2px 6px rgba(0,0,0,0.08)",
+              borderRadius: rs(2),
+              boxShadow: `0 ${rs(1)}px ${rs(1)}px rgba(0,0,0,0.12), 0 ${rs(2)}px ${rs(6)}px rgba(0,0,0,0.08)`,
               // Pivot near the top-right corner so rotation feels like the
               // corner is the handle being pulled.
               transformOrigin: "95% 10%",
@@ -214,11 +217,10 @@ export function JournalClosed({
           bottom: 0,
           left: 0,
           width: BOOK_WIDTH,
-          borderRadius: 4,
+          borderRadius: rs(4),
           background:
             "radial-gradient(ellipse at 35% 30%, #6a412a 0%, #4b2c1b 55%, #301a0d 100%)",
-          boxShadow:
-            "inset 0 1px 0 rgba(255,220,180,0.08), inset 0 -2px 4px rgba(0,0,0,0.5), inset 2px 0 6px rgba(0,0,0,0.35)",
+          boxShadow: `inset 0 ${rs(1)}px 0 rgba(255,220,180,0.08), inset 0 ${rs(-2)}px ${rs(4)}px rgba(0,0,0,0.5), inset ${rs(2)}px 0 ${rs(6)}px rgba(0,0,0,0.35)`,
         }}
       />
 
@@ -230,9 +232,9 @@ export function JournalClosed({
           top: 0,
           bottom: 0,
           left: 0,
-          width: 14,
-          borderTopLeftRadius: 4,
-          borderBottomLeftRadius: 4,
+          width: rs(14),
+          borderTopLeftRadius: rs(4),
+          borderBottomLeftRadius: rs(4),
           background:
             "linear-gradient(90deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.2) 70%, rgba(0,0,0,0) 100%)",
         }}
@@ -243,14 +245,13 @@ export function JournalClosed({
         aria-hidden
         style={{
           position: "absolute",
-          top: 16,
-          bottom: 16,
-          left: 22,
-          width: BOOK_WIDTH - 40,
-          borderRadius: 2,
-          border: "1px solid rgba(255,220,180,0.08)",
-          boxShadow:
-            "inset 0 0 0 1px rgba(0,0,0,0.35), 0 1px 0 rgba(255,220,180,0.04)",
+          top: rs(16),
+          bottom: rs(16),
+          left: rs(22),
+          width: BOOK_WIDTH - rs(40),
+          borderRadius: rs(2),
+          border: `${rs(1)}px solid rgba(255,220,180,0.08)`,
+          boxShadow: `inset 0 0 0 ${rs(1)}px rgba(0,0,0,0.35), 0 ${rs(1)}px 0 rgba(255,220,180,0.04)`,
         }}
       />
 
@@ -263,10 +264,9 @@ export function JournalClosed({
           bottom: 0,
           left: 0,
           width: BOOK_WIDTH,
-          borderRadius: 4,
+          borderRadius: rs(4),
           opacity: 0.15,
-          background:
-            "repeating-linear-gradient(100deg, transparent 0px, transparent 5px, rgba(0,0,0,0.25) 5px, rgba(0,0,0,0.25) 6px)",
+          background: `repeating-linear-gradient(100deg, transparent 0px, transparent ${rs(5)}px, rgba(0,0,0,0.25) ${rs(5)}px, rgba(0,0,0,0.25) ${rs(6)}px)`,
           mixBlendMode: "multiply",
           pointerEvents: "none",
         }}

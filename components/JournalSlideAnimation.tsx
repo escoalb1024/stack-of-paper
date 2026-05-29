@@ -26,6 +26,7 @@ import {
   PAGE_ACTIVE_TOP,
   PAGE_HEIGHT,
   PAGE_WIDTH,
+  rs,
 } from "@/lib/scene";
 
 const SLIDE_DURATION_S = 0.95;
@@ -36,7 +37,7 @@ const TARGET_SCALE = 0.7;
 const TARGET_CENTER_X =
   JOURNAL_LEFT + JOURNAL_BOOK_WIDTH / 2 - (PAGE_WIDTH * TARGET_SCALE) / 2;
 const TARGET_CENTER_Y =
-  JOURNAL_TOP + 60;
+  JOURNAL_TOP + rs(60);
 
 type JournalSlideAnimationProps = {
   doneCount: number;
@@ -126,9 +127,9 @@ export function JournalSlideAnimation({
             width: PAGE_WIDTH,
             height: PAGE_HEIGHT,
             background: "#fbf7ef",
-            borderRadius: 2,
-            boxShadow:
-              "0 1px 1px rgba(0,0,0,0.08), 0 6px 14px rgba(0,0,0,0.12), 0 18px 36px rgba(0,0,0,0.10)",
+            // RES-38 — radius/shadow offsets scaled with the scene.
+            borderRadius: rs(2),
+            boxShadow: `0 ${rs(1)}px ${rs(1)}px rgba(0,0,0,0.08), 0 ${rs(6)}px ${rs(14)}px rgba(0,0,0,0.12), 0 ${rs(18)}px ${rs(36)}px rgba(0,0,0,0.10)`,
             transformOrigin: "50% 50%",
             zIndex: p.zIndex,
           }}
