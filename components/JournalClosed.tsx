@@ -12,7 +12,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { memo, useState } from "react";
 import { motion } from "motion/react";
 import { rs } from "@/lib/scene";
 
@@ -78,7 +78,11 @@ type JournalClosedProps = {
   interactive: boolean;
 };
 
-export function JournalClosed({
+// RES-40 — memoized so per-keystroke re-renders of <Home> (textState +
+// keystrokeCount) don't reconcile the static book DOM. Props are an entry
+// count + a useCallback-stable onClick + an interactive flag, so this only
+// re-renders when one of those actually changes.
+export const JournalClosed = memo(function JournalClosed({
   entryCount,
   onClick,
   interactive,
@@ -273,4 +277,4 @@ export function JournalClosed({
       />
     </motion.div>
   );
-}
+});

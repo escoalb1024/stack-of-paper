@@ -13,6 +13,7 @@
 
 "use client";
 
+import { memo } from "react";
 import {
   PAGE_ACTIVE_LEFT,
   PAGE_ACTIVE_TOP,
@@ -111,7 +112,11 @@ function Page({ offsetX, offsetY, rotate, zIndex, active, onClick }: PageProps) 
   );
 }
 
-export function PageStack({
+// RES-40 — memoized so a keystroke (which re-renders <Home>) doesn't
+// reconcile the static paper pile every character. Props are a
+// useCallback-stable onClick plus two primitives (doneCount, showActive)
+// that only change on page turns / mode flips.
+export const PageStack = memo(function PageStack({
   onClick,
   doneCount = 0,
   showActive = true,
@@ -151,4 +156,4 @@ export function PageStack({
       )}
     </>
   );
-}
+});

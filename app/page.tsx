@@ -6,7 +6,14 @@
 
 "use client";
 
-import { useEffect, useLayoutEffect, useReducer, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
 import { AddToJournalButton } from "@/components/AddToJournalButton";
 import { CameraContainer } from "@/components/CameraContainer";
 import { Desk } from "@/components/Desk";
@@ -27,10 +34,13 @@ import {
 } from "@/components/PageSurface";
 import { PenHand } from "@/components/PenHand";
 import { Toast } from "@/components/Toast";
+import { getMeasureStrategy, perfEnabled } from "@/lib/debug";
 import { measureLineWidth, pickWrapPoint } from "@/lib/measure";
 import {
   PAGE_ACTIVE_LEFT,
   PAGE_ACTIVE_TOP,
+  RENDER_SCALE,
+  WRAP_PROBE_MARGIN,
   WRITING_MARGIN_X,
   WRITING_MARGIN_Y,
   WRITING_WIDTH,
@@ -62,6 +72,14 @@ const PEN_LEAD_X = Math.round(TEXT_FONT_SIZE * 0.3);
 const DEFAULT_CURSOR = {
   x: PAGE_ACTIVE_LEFT + WRITING_MARGIN_X + PEN_LEAD_X,
   y: PAGE_ACTIVE_TOP + WRITING_MARGIN_Y + TEXT_FONT_SIZE,
+};
+
+// RES-40 — exact-measure options, matching PageSurface's rendered text. Used
+// by the soft-wrap effect's boundary fallback (and the ?measure=legacy path).
+const MEASURE_OPTS = {
+  fontFamily: TEXT_FONT_FAMILY,
+  fontSize: TEXT_FONT_SIZE,
+  lineHeight: TEXT_LINE_HEIGHT,
 };
 
 export default function Home() {
@@ -154,12 +172,61 @@ export default function Home() {
     const line = page.lines[page.lines.length - 1];
     if (line.chars.length < 2) return;
 
-    const width = measureLineWidth(line.chars, {
-      fontFamily: TEXT_FONT_FAMILY,
-      fontSize: TEXT_FONT_SIZE,
-      lineHeight: TEXT_LINE_HEIGHT,
-    });
-    if (width <= WRITING_WIDTH) return;
+    // RES-40 — dev A/B + timing. `?measure=legacy` reproduces the pre-fix
+    // offscreen re-measure; `?perf=1` logs the per-keystroke cost. Both are
+    // removable dev affordances (see lib/debug.ts).
+    const perf = perfEnabled();
+    const t0 = perf ? performance.now() : 0;
+    const strategy = getMeasureStrategy();
+
+    let overflow: boolean;
+    if (strategy === "legacy") {
+      // Pre-fix path: rebuild an offscreen <span>-per-char copy of the active
+      // line and force a reflow — O(line length), most expensive right before
+      // a wrap. Retained only for comparison behind ?measure=legacy.
+      overflow = measureLineWidth(line.chars, MEASURE_OPTS) > WRITING_WIDTH;
+    } else {
+      // RES-40 hybrid. Fast path: reuse the real rendered insertion point the
+      // cursor effect already reads — the cursor marker sits at the end of the
+      // active line, so its offsetLeft within the PageSurface container is the
+      // line's rendered width. No parallel offscreen DOM, no second reflow.
+      // This carries the common case (cursor far from the right margin) and
+      // removes the O(line-length) cost that degraded FPS toward the margin.
+      const el = cursorRef.current;
+      if (!el) return;
+      // Mirror measureLineWidth's trailing-jitter correction (measure.ts):
+      // a positive offsetX on the last char can push ink past the margin.
+      // Read it from state, not the DOM, so this stays a single layout read.
+      const lastChar = line.chars[line.chars.length - 1];
+      const boost = lastChar.offsetX > 0 ? lastChar.offsetX * RENDER_SCALE : 0;
+      const approx = el.offsetLeft + boost;
+      if (approx <= WRITING_WIDTH - WRAP_PROBE_MARGIN) {
+        // Comfortably inside the writable area — no wrap, skip the exact
+        // measure entirely (the cheap, FPS-flat common case).
+        overflow = false;
+      } else {
+        // Near (or past) the boundary: offsetLeft is integer-rounded and
+        // ignores cursive last-char overhang, so a fast under-read could fire
+        // the wrap a render late — which then delays the dependent page-fill,
+        // leaving an overflow line visible below the page until an unrelated
+        // re-render flushes it. Confirm with the exact, deterministic
+        // state-based measure so the wrap fires on the right keystroke and the
+        // wrap → page-fill cascade stays synchronous (pre-paint).
+        overflow = measureLineWidth(line.chars, MEASURE_OPTS) > WRITING_WIDTH;
+      }
+    }
+
+    if (perf) {
+      // console.log (not .debug) so it shows under DevTools' default level
+      // filter without enabling "Verbose". Dev-only — removed with RES-40.
+      console.log(
+        `[RES-40] wrap-measure strategy=${strategy} lineLen=${line.chars.length} ms=${(
+          performance.now() - t0
+        ).toFixed(3)}`,
+      );
+    }
+
+    if (!overflow) return;
 
     const breakAt = pickWrapPoint(line.chars);
     if (breakAt > 0) textDispatch({ type: "WRAP_LINE", breakAt });
@@ -340,19 +407,39 @@ export default function Home() {
   // a same-day "second session" as its own entry would need a non-date key;
   // out of scope for this ticket.) The check uses a ref read inside the
   // timeout so it always sees the latest status without re-subscribing.
+  // RES-40: the save body (`buildEntry` → `derivePlainText` walks every char,
+  // then `saveEntry` structured-clones the whole document into IndexedDB) grows
+  // with page count and can hitch a frame on a deep draft. Yield it to idle
+  // time after the debounce fires so serialization never blocks a typing paint.
+  // `requestIdleCallback` has a 1s timeout guarantee; falls back to a 0ms
+  // timeout where it's unavailable (Safari). Cleanup cancels both the debounce
+  // and any still-pending idle save so a newer keystroke supersedes it.
   useEffect(() => {
     if (!hydrated) return;
+    let idleHandle: number | undefined;
     const handle = setTimeout(() => {
-      if (existingEntryRef.current?.status === "journaled") return;
-      const entry = buildEntry(
-        dateRef.current,
-        textState.pages,
-        existingEntryRef.current,
-      );
-      existingEntryRef.current = entry;
-      void saveEntry(entry);
+      const save = () => {
+        if (existingEntryRef.current?.status === "journaled") return;
+        const entry = buildEntry(
+          dateRef.current,
+          textState.pages,
+          existingEntryRef.current,
+        );
+        existingEntryRef.current = entry;
+        void saveEntry(entry);
+      };
+      if (typeof requestIdleCallback === "function") {
+        idleHandle = requestIdleCallback(save, { timeout: 1000 });
+      } else {
+        idleHandle = window.setTimeout(save, 0);
+      }
     }, 500);
-    return () => clearTimeout(handle);
+    return () => {
+      clearTimeout(handle);
+      if (idleHandle === undefined) return;
+      if (typeof cancelIdleCallback === "function") cancelIdleCallback(idleHandle);
+      else clearTimeout(idleHandle);
+    };
   }, [hydrated, textState.pages]);
 
   // RES-28: trigger the 3-page toast when the active page index first reaches
@@ -435,6 +522,23 @@ export default function Home() {
   // React state but lets the browser drop the layer until we return.
   const sceneHidden = mode === "JOURNAL_OPEN";
 
+  // RES-40 — stable handlers so the memoized JournalClosed / PageStack don't
+  // re-render on every keystroke (a fresh inline arrow each render would defeat
+  // React.memo). Deps are minimal: the journal handler only reads `mode`, the
+  // page-stack handler only reads the write-active page index.
+  const handleJournalClick = useCallback(() => {
+    journalReturnRef.current = mode === "ZOOM_OUT" ? "ZOOM_OUT" : "DESK_IDLE";
+    dispatch({ type: "CLICK_JOURNAL" });
+  }, [mode]);
+
+  const handlePageStackClick = useCallback(() => {
+    // RES-34: snap review back to the tail before zooming in so cursorRef
+    // re-mounts against the write-active page and the camera targets the
+    // right spot on handoff.
+    setViewingPageIndex(textState.pageIndex);
+    dispatch({ type: "CLICK_PAGE_STACK" });
+  }, [textState.pageIndex]);
+
   return (
     <main
       className="relative h-screen w-screen overflow-clip"
@@ -468,22 +572,12 @@ export default function Home() {
         <Desk>
           <JournalClosed
             entryCount={journaledCount}
-            onClick={() => {
-              journalReturnRef.current =
-                mode === "ZOOM_OUT" ? "ZOOM_OUT" : "DESK_IDLE";
-              dispatch({ type: "CLICK_JOURNAL" });
-            }}
+            onClick={handleJournalClick}
             interactive={mode === "DESK_IDLE" || mode === "ZOOM_OUT"}
           />
           {mode !== "JOURNAL_SLIDE" && (
             <PageStack
-              onClick={() => {
-                // RES-34: snap review back to the tail before zooming in so
-                // cursorRef re-mounts against the write-active page and the
-                // camera targets the right spot on handoff.
-                setViewingPageIndex(textState.pageIndex);
-                dispatch({ type: "CLICK_PAGE_STACK" });
-              }}
+              onClick={handlePageStackClick}
               doneCount={textState.pageIndex}
               showActive={mode !== "PAGE_TURN" && mode !== "PAGE_NAV"}
             />

@@ -51,6 +51,17 @@ export const WRITING_MARGIN_Y = rs(72);
 export const WRITING_WIDTH = PAGE_WIDTH - WRITING_MARGIN_X * 2;
 export const WRITING_HEIGHT = PAGE_HEIGHT - WRITING_MARGIN_Y * 2;
 
+// RES-40 — soft-wrap decision safety margin. The fast path reads the live
+// cursor x (cursorRef.offsetLeft), which can under-report the true line width
+// by a pixel or two (offsetLeft is integer-rounded) and ignores the cursive
+// last-character ink overhang of the Caveat font. When the fast read lands
+// within this margin of WRITING_WIDTH, the soft-wrap effect falls back to the
+// exact offscreen measure so a line can't visibly overflow before it wraps
+// (which otherwise also delays the dependent page-fill). ~1.5 character widths
+// at the writing font size — wide enough to absorb the read discrepancy,
+// narrow enough that the exact measure only runs for the last char or two.
+export const WRAP_PROBE_MARGIN = rs(22);
+
 // RES-38 — zoom maths.
 // The scene is rendered at RENDER_SCALE; the camera multiplies by these
 // scales to land each state at the correct viewport size.
