@@ -6,28 +6,14 @@ How to work in this repo. For what the app *is*, see `PRODUCT.md`. For how the c
 
 ## Ticket workflow (RES-N)
 
-Tickets are tracked outside the repo in an Obsidian vault:
+Commits and code comments reference ticket IDs like `RES-34`. The tickets
+themselves live in a private tracker outside this repo; the IDs are here so the
+history stays traceable.
 
-```
-/Users/alberte/Documents/Obsidian Vault/Projects/writingApp/
-├── Stack of Papers - Project Spec.md   Original product spec (more verbose than docs/PRODUCT.md)
-├── _index.md                           Ticket index
-└── Tickets/
-    ├── phase-1-core-writing-experience.md
-    ├── phase-2-page-management.md
-    ├── phase-3-persistence-journal.md
-    ├── phase-4-polish.md
-    ├── phase-5-bug-fixes.md
-    └── RES-N-<slug>.md                 One file per ticket — canonical worklog
-```
-
-The vault path is registered as an additional working directory, so agents can read it directly.
-
-### Conventions
-
-- **Reference RES-N in commit messages and code comments** when the *why* is non-obvious. Example commit subject: `RES-28: fix toast getting stuck when mode flips during dismiss window`. Example inline comment: `// RES-34 makes ZOOM_OUT a proper resting state…`
-- **Read the relevant ticket before extending a feature.** Each `RES-N-*.md` is the canonical record of what was tried, what shipped, and why. The phase rollups (`phase-*.md`) give cross-ticket context.
-- **Closing a ticket**: use the `close-obsidian-ticket` skill. It fills in the Agent Work section and marks the ticket done after user confirmation. Don't hand-edit ticket front-matter.
+- **Reference RES-N in commit messages and code comments** when the *why* is
+  non-obvious. Example commit subject: `RES-28: fix toast getting stuck when
+  mode flips during dismiss window`. Example inline comment:
+  `// RES-34 makes ZOOM_OUT a proper resting state…`
 
 ---
 
